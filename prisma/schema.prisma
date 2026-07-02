@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// The ledger — the single source of truth. Holdings are always derived from these rows.
+model Transaction {
+  id             Int      @id @default(autoincrement())
+  security       String
+  tradeNo        String
+  tradeDate      String // yyyy-mm-dd (sorts chronologically as text)
+  settlementDate String
+  side           String // BUY | SELL
+  rate           Float // execution price per share
+  qty            Int
+  grossAmount    Float // rate * qty
+  brokerage      Float // total broker commission for the trade
+  cvt            Float
+  netAmount      Float // BUY: gross+fees, SELL: gross-fees
+  sourceFile     String?
+  importedAt     DateTime @default(now())
+
+  @@index([security])
+  @@index([tradeDate])
+}

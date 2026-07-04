@@ -100,8 +100,36 @@ export function parseFinqalabText(text: string): FinqalabParseResult {
   };
 }
 
+/**
+ * pdf-parse concatenates text items on a line with no separator
+ * ("HBL900001012026-03-02..."). This custom renderer inserts a space between
+ * items sharing the same baseline (y), reconstructing the column layout so
+ * ROW_RE can read it — while still breaking lines when the baseline changes.
+ */
+function renderPageWithSpaces(pageData: {
+  getTextContent: (opts: {
+    normalizeWhitespace: boolean;
+    disableCombineTextItems: boolean;
+  }) => Promise<{ items: { str: string; transform: number[] }[] }>;
+}): Promise<string> {
+  return pageData
+    .getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false })
+    .then((tc) => {
+      let lastY: number | undefined;
+      let text = "";
+      for (const item of tc.items) {
+        const y = item.transform[5];
+        if (lastY === undefined) text += item.str;
+        else if (y === lastY) text += " " + item.str;
+        else text += "\n" + item.str;
+        lastY = y;
+      }
+      return text;
+    });
+}
+
 /** Extract text from a Finqalab PDF (as a Buffer) and parse it. */
 export async function parseFinqalabPdf(buffer: Buffer): Promise<FinqalabParseResult> {
-  const data = await pdfParse(buffer);
+  const data = await pdfParse(buffer, { pagerender: renderPageWithSpaces });
   return parseFinqalabText(data.text);
 }

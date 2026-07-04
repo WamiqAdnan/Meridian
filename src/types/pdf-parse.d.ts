@@ -9,6 +9,16 @@ declare module "pdf-parse/lib/pdf-parse.js" {
     metadata: unknown;
     version: string;
   }
-  function pdfParse(dataBuffer: Buffer | Uint8Array): Promise<PDFParseResult>;
+  interface PDFParseOptions {
+    // Custom per-page renderer; receives a pdfjs page proxy.
+    pagerender?: (pageData: {
+      getTextContent: (opts: {
+        normalizeWhitespace: boolean;
+        disableCombineTextItems: boolean;
+      }) => Promise<{ items: { str: string; transform: number[] }[] }>;
+    }) => Promise<string>;
+    max?: number;
+  }
+  function pdfParse(dataBuffer: Buffer | Uint8Array, options?: PDFParseOptions): Promise<PDFParseResult>;
   export default pdfParse;
 }

@@ -27,13 +27,16 @@ export interface FinqalabParseResult {
 /**
  * A Finqalab trade row looks like:
  *   HBL 90000101 2026-03-02 2026-03-03 BUY 152.4 200 30480 0.381 76.2 0
- *   SYMBOL TRADE_NO TRADE_DATE SETTLE_DATE SIDE RATE QTY GROSS BROKER/SH BROKER_TOTAL CVT
+ *   SYMBOL TRADE_NO [BILL_NO?] TRADE_DATE SETTLE_DATE SIDE RATE QTY GROSS BROKER/SH BROKER_TOTAL CVT
  *
  * The two "Broker" columns are the per-share commission (rate * 0.25%) and the
  * total commission (gross * 0.25%); the total commission is the real brokerage fee.
+ *
+ * We anchor on the two ISO dates + the BUY/SELL keyword + the six trailing numbers so
+ * that a future report which populates the currently-blank "Bill No." column still parses.
  */
 const ROW_RE =
-  /^([A-Z][A-Z0-9]*)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(BUY|SELL)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$/;
+  /^([A-Z][A-Z0-9]*)\s+(\d+)(?:\s+\d+)?\s+(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+(BUY|SELL)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)$/;
 
 function num(s: string): number {
   return Number(s.replace(/,/g, ""));

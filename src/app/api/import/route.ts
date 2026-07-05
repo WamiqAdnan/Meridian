@@ -1,0 +1,72 @@
+import { NextResponse } from "next/server";
+import { parseFinqalabPdf } from "@/lib/finqalab-parser";
+import { prisma } from "@/lib/db";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(req: Request) {
+  let file: File | null = null;
+  try {
+    const form = await req.formData();
+    const f = form.get("file");
+    if (f && typeof f !== "string") file = f;
+  } catch {
+    return NextResponse.json({ error: "Expected multipart form data with a 'file' field." }, { status: 400 });
+  }
+  if (!file) {
+    return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
+  }
+
+  let parsed;
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    parsed = await parseFinqalabPdf(buffer);
+  } catch (e) {
+    return NextResponse.json(
+      { error: `Could not read the PDF: ${(e as Error).message}` },
+      { status: 422 },
+    );
+  }
+
+  if (parsed.trades.length === 0) {
+    return NextResponse.json(
+      { error: "No Finqalab trades found in this file. Is it a Periodic Trade Details Report?" },
+      { status: 422 },
+    );
+  }
+
+  await prisma.transaction.createMany({
+    data: parsed.trades.map((t) => ({
+      security: t.security,
+      tradeNo: t.tradeNo,
+      tradeDate: t.tradeDate,
+      settlementDate: t.settlementDate,
+      side: t.side,
+      rate: t.rate,
+      qty: t.qty,
+      grossAmount: t.grossAmount,
+      brokerage: t.brokerage,
+      cvt: t.cvt,
+      netAmount: t.netAmount,
+      sourceFile: file.name,
+    })),
+  });
+
+  await prisma.importBatch.create({
+    data: {
+      filename: file.name,
+      totalParsed: parsed.trades.length,
+      tradesAdded: parsed.trades.length,
+    },
+  });
+
+  return NextResponse.json({
+    filename: file.name,
+    client: parsed.client,
+    period: parsed.period,
+    totalParsed: parsed.trades.length,
+    tradesAdded: parsed.trades.length,
+    countMatches: parsed.countMatches,
+  });
+}

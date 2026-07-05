@@ -27,3 +27,12 @@ model Transaction {
   @@index([security])
   @@index([tradeDate])
 }
+
+/// History of PDF imports (for display / audit).
+model ImportBatch {
+  id          Int      @id @default(autoincrement())
+  filename    String
+  uploadedAt  DateTime @default(now())
+  totalParsed Int
+  tradesAdded Int
+}

@@ -36,28 +36,39 @@ export async function POST(req: Request) {
     );
   }
 
-  await prisma.transaction.createMany({
-    data: parsed.trades.map((t) => ({
-      security: t.security,
-      tradeNo: t.tradeNo,
-      tradeDate: t.tradeDate,
-      settlementDate: t.settlementDate,
-      side: t.side,
-      rate: t.rate,
-      qty: t.qty,
-      grossAmount: t.grossAmount,
-      brokerage: t.brokerage,
-      cvt: t.cvt,
-      netAmount: t.netAmount,
-      sourceFile: file.name,
-    })),
+  const tradeNos = parsed.trades.map((t) => t.tradeNo);
+  const existing = await prisma.transaction.findMany({
+    where: { tradeNo: { in: tradeNos } },
+    select: { tradeNo: true },
   });
+  const existingSet = new Set(existing.map((e) => e.tradeNo));
+  const fresh = parsed.trades.filter((t) => !existingSet.has(t.tradeNo));
+
+  if (fresh.length > 0) {
+    await prisma.transaction.createMany({
+      data: fresh.map((t) => ({
+        security: t.security,
+        tradeNo: t.tradeNo,
+        tradeDate: t.tradeDate,
+        settlementDate: t.settlementDate,
+        side: t.side,
+        rate: t.rate,
+        qty: t.qty,
+        grossAmount: t.grossAmount,
+        brokerage: t.brokerage,
+        cvt: t.cvt,
+        netAmount: t.netAmount,
+        sourceFile: file.name,
+      })),
+    });
+  }
 
   await prisma.importBatch.create({
     data: {
       filename: file.name,
       totalParsed: parsed.trades.length,
-      tradesAdded: parsed.trades.length,
+      tradesAdded: fresh.length,
+      duplicatesSkipped: parsed.trades.length - fresh.length,
     },
   });
 
@@ -66,7 +77,8 @@ export async function POST(req: Request) {
     client: parsed.client,
     period: parsed.period,
     totalParsed: parsed.trades.length,
-    tradesAdded: parsed.trades.length,
+    tradesAdded: fresh.length,
+    duplicatesSkipped: parsed.trades.length - fresh.length,
     countMatches: parsed.countMatches,
   });
 }

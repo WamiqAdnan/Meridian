@@ -7,6 +7,7 @@ interface ImportResult {
   filename: string;
   totalParsed: number;
   tradesAdded: number;
+  duplicatesSkipped: number;
   countMatches: boolean;
   period?: string | null;
 }
@@ -73,14 +74,17 @@ export default function UploadCard() {
       <p className="text-sm font-medium">
         {busy ? "Reading report…" : "Drop a Finqalab report PDF here, or click to choose"}
       </p>
-        <p className="mt-1 text-xs text-neutral-500">Periodic Trade Details Report</p>
+        <p className="mt-1 text-xs text-neutral-500">
+          Periodic Trade Details Report · trades are deduplicated by trade number
+        </p>
       </div>
 
       {result && (
         <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-left text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
           <span className="font-semibold">{result.filename}</span>: added{" "}
-          <b>{result.tradesAdded}</b> trade{result.tradesAdded === 1 ? "" : "s"} (of{" "}
-          {result.totalParsed} parsed).
+          <b>{result.tradesAdded}</b> new trade{result.tradesAdded === 1 ? "" : "s"},{" "}
+          <b>{result.duplicatesSkipped}</b> duplicate{result.duplicatesSkipped === 1 ? "" : "s"} skipped
+          {" "}(of {result.totalParsed} parsed).
           {!result.countMatches && (
             <span className="block text-amber-700 dark:text-amber-400">
               ⚠ Parsed count didn&apos;t match the report&apos;s stated total — check the PDF.

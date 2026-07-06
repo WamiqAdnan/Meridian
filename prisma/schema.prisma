@@ -11,7 +11,7 @@ datasource db {
 model Transaction {
   id             Int      @id @default(autoincrement())
   security       String
-  tradeNo        String
+  tradeNo        String   @unique // dedup key: re-importing the same/overlapping report never double-counts
   tradeDate      String // yyyy-mm-dd (sorts chronologically as text)
   settlementDate String
   side           String // BUY | SELL
@@ -30,9 +30,10 @@ model Transaction {
 
 /// History of PDF imports (for display / audit).
 model ImportBatch {
-  id          Int      @id @default(autoincrement())
-  filename    String
-  uploadedAt  DateTime @default(now())
-  totalParsed Int
-  tradesAdded Int
+  id                Int      @id @default(autoincrement())
+  filename          String
+  uploadedAt        DateTime @default(now())
+  totalParsed       Int
+  tradesAdded       Int
+  duplicatesSkipped Int
 }

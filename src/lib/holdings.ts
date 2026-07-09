@@ -25,12 +25,13 @@ export interface HoldingsResult {
   holdings: Holding[]; // only positions with qty > 0, sorted by security
   realizedBySecurity: Record<string, number>; // realized P&L booked from SELLs
   realizedTotal: number;
+  warnings: string[];
 }
 
 interface Position {
   qty: number;
-  grossCost: number;
-  fees: number;
+  grossCost: number; // sum of remaining rate*qty (proportionally reduced on sells)
+  fees: number; // remaining fees (proportionally reduced on sells)
   realized: number;
 }
 
@@ -38,9 +39,10 @@ interface Position {
  * Replay the whole ledger in chronological order to derive current holdings.
  *
  * - BUY  → increase qty and blend the weighted-average cost (fees included in cost basis).
- * - SELL → book realized P&L = qty*(sellRate - avgCostInclFees) - sellFees, and reduce
- *          the position.
+ * - SELL → book realized P&L = qty*(sellRate - avgCostInclFees) - sellFees, reduce qty,
+ *          and scale cost/fees down proportionally so the average cost is preserved.
  * - Any position that reaches qty 0 is dropped from `holdings`.
+ * - An over-sell (selling more than held) is clamped to the held qty with a warning.
  */
 export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
   const ordered = [...trades].sort((a, b) =>
@@ -50,6 +52,7 @@ export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
   );
 
   const positions = new Map<string, Position>();
+  const warnings: string[] = [];
 
   for (const t of ordered) {
     let p = positions.get(t.security);
@@ -65,11 +68,21 @@ export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
       p.fees += fees;
     } else {
       // SELL
+      let sellQty = t.qty;
+      if (sellQty > p.qty) {
+        warnings.push(
+          `Over-sell of ${t.security}: sold ${t.qty} but only ${p.qty} held (trade ${t.tradeNo}); clamped.`,
+        );
+        sellQty = p.qty;
+      }
       const avgCostInclFees = p.qty > 0 ? (p.grossCost + p.fees) / p.qty : 0;
-      p.realized += t.qty * (t.rate - avgCostInclFees) - fees;
-      p.qty -= t.qty;
-      p.grossCost -= t.rate * t.qty;
-      p.fees -= fees;
+      p.realized += sellQty * (t.rate - avgCostInclFees) - fees;
+
+      const remaining = p.qty - sellQty;
+      const ratio = p.qty > 0 ? remaining / p.qty : 0;
+      p.grossCost *= ratio;
+      p.fees *= ratio;
+      p.qty = remaining;
     }
   }
 
@@ -96,7 +109,7 @@ export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
   }
 
   holdings.sort((a, b) => a.security.localeCompare(b.security));
-  return { holdings, realizedBySecurity, realizedTotal: round2(realizedTotal) };
+  return { holdings, realizedBySecurity, realizedTotal: round2(realizedTotal), warnings };
 }
 
 function round2(n: number): number {

@@ -7,15 +7,17 @@ const MARKET_WATCH_URL = "https://dps.psx.com.pk/market-watch";
  * Column positions in the market-watch table:
  *   0 SYMBOL | 1 SECTOR | 2 LISTED IN | 3 LDCP | 4 OPEN | 5 HIGH | 6 LOW |
  *   7 CURRENT | 8 CHANGE | 9 CHANGE (%) | 10 VOLUME
+ *
+ * The live price is CURRENT — LDCP is the *previous* close.
  */
 const COL_SYMBOL = 0;
-const COL_PRICE = 3;
+const COL_PRICE = 7;
 const COL_CHANGE = 8;
 const COL_PCT = 9;
 
 export interface LivePrice {
   symbol: string;
-  price: number;
+  price: number; // CURRENT / last traded price
   change: number | null;
   changePct: number | null;
 }

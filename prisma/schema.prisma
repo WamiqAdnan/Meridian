@@ -28,6 +28,15 @@ model Transaction {
   @@index([tradeDate])
 }
 
+/// Cached live prices from the PSX market-watch feed.
+model PriceCache {
+  symbol    String   @id
+  lastPrice Float
+  change    Float?
+  changePct Float?
+  fetchedAt DateTime @default(now())
+}
+
 /// History of PDF imports (for display / audit).
 model ImportBatch {
   id                Int      @id @default(autoincrement())

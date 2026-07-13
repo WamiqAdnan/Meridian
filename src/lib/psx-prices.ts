@@ -3,18 +3,6 @@ import { prisma } from "./db";
 
 const MARKET_WATCH_URL = "https://dps.psx.com.pk/market-watch";
 
-/**
- * Column positions in the market-watch table:
- *   0 SYMBOL | 1 SECTOR | 2 LISTED IN | 3 LDCP | 4 OPEN | 5 HIGH | 6 LOW |
- *   7 CURRENT | 8 CHANGE | 9 CHANGE (%) | 10 VOLUME
- *
- * The live price is CURRENT — LDCP is the *previous* close.
- */
-const COL_SYMBOL = 0;
-const COL_PRICE = 7;
-const COL_CHANGE = 8;
-const COL_PCT = 9;
-
 export interface LivePrice {
   symbol: string;
   price: number; // CURRENT / last traded price
@@ -28,7 +16,14 @@ function toNum(raw: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Fetch and parse the PSX market-watch table. */
+/**
+ * Fetch and parse the PSX market-watch table.
+ *
+ * The feed is an HTML table whose header cells carry data-name attributes
+ * (symbol, sector, listed, ldcp, open, high, low, close, change, percentChange, volume).
+ * The live price is the `close` column (labelled CURRENT), NOT `ldcp` (previous close).
+ * We map columns by header position so it survives column reordering.
+ */
 export async function fetchMarketWatch(timeoutMs = 15000): Promise<LivePrice[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -47,23 +42,42 @@ export async function fetchMarketWatch(timeoutMs = 15000): Promise<LivePrice[]> 
 
   const $ = cheerio.load(html);
 
+  // Column order from the header's data-name attributes.
+  const cols: string[] = [];
+  $("thead th").each((_, th) => {
+    cols.push($(th).attr("data-name") ?? "");
+  });
+  const idxSymbol = cols.indexOf("symbol");
+  const idxClose = cols.indexOf("close");
+  const idxChange = cols.indexOf("change");
+  const idxPct = cols.indexOf("percentChange");
+  if (idxSymbol < 0 || idxClose < 0) {
+    throw new Error("Unexpected market-watch layout (missing symbol/close columns)");
+  }
+
+  const cellValue = (tds: cheerio.Cheerio<never>, i: number): string | undefined => {
+    if (i < 0) return undefined;
+    const td = tds.eq(i);
+    return (td.attr("data-order") ?? td.text()).trim();
+  };
+
   const out: LivePrice[] = [];
   $("tbody tr").each((_, tr) => {
-    const tds = $(tr).find("td");
+    const tds = $(tr).find("td") as unknown as cheerio.Cheerio<never>;
     if (tds.length === 0) return;
-    const symCell = tds.eq(COL_SYMBOL);
+    const symCell = tds.eq(idxSymbol);
     const symbol = (
       symCell.find("strong").text() ||
       symCell.attr("data-search") ||
       symCell.text()
     ).trim();
-    const price = toNum(tds.eq(COL_PRICE).text());
+    const price = toNum(cellValue(tds, idxClose));
     if (!symbol || price == null) return;
     out.push({
       symbol,
       price,
-      change: toNum(tds.eq(COL_CHANGE).text()),
-      changePct: toNum(tds.eq(COL_PCT).text()),
+      change: toNum(cellValue(tds, idxChange)),
+      changePct: toNum(cellValue(tds, idxPct)),
     });
   });
 
@@ -73,6 +87,7 @@ export async function fetchMarketWatch(timeoutMs = 15000): Promise<LivePrice[]> 
 /**
  * Refresh cached prices. Fetches the whole market and stores only the given
  * symbols (defaults to symbols we currently hold). Returns count updated.
+ * Never throws for the caller's convenience is NOT assumed — callers should catch.
  */
 export async function refreshPrices(symbols?: string[]): Promise<{ updated: number; fetchedAt: Date }> {
   const all = await fetchMarketWatch();

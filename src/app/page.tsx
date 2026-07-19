@@ -4,6 +4,7 @@ import { refreshPricesIfStale } from "@/lib/psx-prices";
 import { fmtRs, fmtRs2, fmtPct, fmtSignedRs, fmtQty, fmtTime, pnlColor } from "@/lib/format";
 import UploadCard from "@/components/UploadCard";
 import RefreshPricesButton from "@/components/RefreshPricesButton";
+import AllocationDonut from "@/components/AllocationDonut";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -134,6 +135,16 @@ export default async function DashboardPage() {
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Import</h2>
             <UploadCard />
           </div>
+          {hasHoldings && (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Allocation</h2>
+              <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+                <AllocationDonut
+                  data={holdings.map((h) => ({ label: h.security, value: h.marketValue ?? h.totalCost }))}
+                />
+              </div>
+            </div>
+          )}
         </aside>
       </div>
     </div>

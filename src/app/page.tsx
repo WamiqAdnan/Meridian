@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getPortfolio } from "@/lib/portfolio";
 import { refreshPricesIfStale } from "@/lib/psx-prices";
@@ -31,6 +32,12 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/transactions"
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
+          >
+            Transactions
+          </Link>
           <RefreshPricesButton />
         </div>
       </header>

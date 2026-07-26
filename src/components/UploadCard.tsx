@@ -2,9 +2,11 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { INVESTORS } from "@/lib/investors";
 
 interface ImportResult {
   filename: string;
+  owner: string;
   totalParsed: number;
   tradesAdded: number;
   duplicatesSkipped: number;
@@ -12,11 +14,12 @@ interface ImportResult {
   period?: string | null;
 }
 
-export default function UploadCard() {
+export default function UploadCard({ defaultOwner }: { defaultOwner: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [owner, setOwner] = useState<string>(defaultOwner);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +30,7 @@ export default function UploadCard() {
     try {
       const body = new FormData();
       body.append("file", file);
+      body.append("owner", owner);
       const res = await fetch("/api/import", { method: "POST", body });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
@@ -46,6 +50,25 @@ export default function UploadCard() {
 
   return (
     <div>
+      <div className="mb-2">
+        <span className="mr-2 text-xs font-medium text-neutral-500">Whose report?</span>
+        <span className="inline-flex rounded-lg border border-neutral-300 p-0.5 text-xs dark:border-neutral-700">
+          {INVESTORS.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setOwner(name)}
+              className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
+                owner === name
+                  ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              }`}
+            >
+              {name}
+            </button>
+          ))}
+        </span>
+      </div>
       <div
         onDragOver={(e) => {
         e.preventDefault();
@@ -81,7 +104,7 @@ export default function UploadCard() {
 
       {result && (
         <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-left text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-          <span className="font-semibold">{result.filename}</span>: added{" "}
+          <span className="font-semibold">{result.filename}</span> → <b>{result.owner}</b>: added{" "}
           <b>{result.tradesAdded}</b> new trade{result.tradesAdded === 1 ? "" : "s"},{" "}
           <b>{result.duplicatesSkipped}</b> duplicate{result.duplicatesSkipped === 1 ? "" : "s"} skipped
           {" "}(of {result.totalParsed} parsed).

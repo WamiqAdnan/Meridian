@@ -1,12 +1,20 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { toOwnerFilter } from "@/lib/investors";
+import InvestorSwitcher from "@/components/InvestorSwitcher";
 import LedgerTable, { type LedgerRow } from "@/components/LedgerTable";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function TransactionsPage() {
+export default async function TransactionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ owner?: string }>;
+}) {
+  const owner = toOwnerFilter((await searchParams).owner);
   const rows = await prisma.transaction.findMany({
+    where: owner ? { owner } : undefined,
     orderBy: [{ tradeDate: "desc" }, { tradeNo: "desc" }],
   });
 
@@ -14,6 +22,7 @@ export default async function TransactionsPage() {
   const trades: LedgerRow[] = rows.map((t) => ({
     id: t.id,
     tradeDate: t.tradeDate,
+    owner: t.owner,
     security: t.security,
     side: t.side,
     qty: t.qty,
@@ -42,6 +51,10 @@ export default async function TransactionsPage() {
           ← Dashboard
         </Link>
       </header>
+
+      <div className="mb-6">
+        <InvestorSwitcher basePath="/transactions" selected={owner} />
+      </div>
 
       {trades.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 dark:border-neutral-700">

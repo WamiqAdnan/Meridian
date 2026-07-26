@@ -6,6 +6,7 @@ import DeleteTradeButton from "@/components/DeleteTradeButton";
 export interface LedgerRow {
   id: number;
   tradeDate: string;
+  owner: string;
   security: string;
   side: string;
   qty: number;
@@ -24,6 +25,7 @@ export default function LedgerTable({ trades }: { trades: LedgerRow[] }) {
         <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900">
           <tr>
             <th className="px-3 py-2">Date</th>
+            <th className="px-3 py-2">Owner</th>
             <th className="px-3 py-2">Symbol</th>
             <th className="px-3 py-2">Side</th>
             <th className="px-3 py-2 text-right">Qty</th>
@@ -40,6 +42,7 @@ export default function LedgerTable({ trades }: { trades: LedgerRow[] }) {
           {trades.map((t) => (
             <tr key={t.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/50">
               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-neutral-500">{t.tradeDate}</td>
+              <td className="px-3 py-2">{t.owner}</td>
               <td className="px-3 py-2 font-semibold">{t.security}</td>
               <td className="px-3 py-2">
                 <span

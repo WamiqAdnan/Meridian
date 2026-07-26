@@ -10,6 +10,7 @@ datasource db {
 /// The ledger — the single source of truth. Holdings are always derived from these rows.
 model Transaction {
   id             Int      @id @default(autoincrement())
+  owner          String   @default("Investor A") // which investor this trade belongs to (shared Finqalab account)
   security       String
   tradeNo        String   @unique // dedup key: re-importing the same/overlapping report never double-counts
   tradeDate      String // yyyy-mm-dd (sorts chronologically as text)
@@ -26,6 +27,7 @@ model Transaction {
 
   @@index([security])
   @@index([tradeDate])
+  @@index([owner])
 }
 
 /// Cached live prices from the PSX market-watch feed.
@@ -40,6 +42,7 @@ model PriceCache {
 /// History of PDF imports (for display / audit).
 model ImportBatch {
   id                Int      @id @default(autoincrement())
+  owner             String   @default("Investor A")
   filename          String
   uploadedAt        DateTime @default(now())
   totalParsed       Int

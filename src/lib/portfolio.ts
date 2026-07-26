@@ -28,9 +28,12 @@ export interface Portfolio {
   pricedCount: number;
 }
 
-/** Build the full portfolio view from the ledger + cached prices. */
-export async function getPortfolio(): Promise<Portfolio> {
-  const trades = await prisma.transaction.findMany();
+/**
+ * Build the full portfolio view from the ledger + cached prices.
+ * Pass an `owner` to view a single investor; omit (or null) for the combined view.
+ */
+export async function getPortfolio(owner?: string | null): Promise<Portfolio> {
+  const trades = await prisma.transaction.findMany(owner ? { where: { owner } } : undefined);
   const { holdings, realizedBySecurity, realizedTotal, warnings } = computeHoldings(trades);
 
   const prices = await getCachedPrices(holdings.map((h) => h.security));

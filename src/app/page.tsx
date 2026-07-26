@@ -6,26 +6,37 @@ import { fmtRs, fmtRs2, fmtPct, fmtSignedRs, fmtQty, fmtTime, pnlColor } from "@
 import UploadCard from "@/components/UploadCard";
 import RefreshPricesButton from "@/components/RefreshPricesButton";
 import AllocationDonut from "@/components/AllocationDonut";
+import InvestorSwitcher from "@/components/InvestorSwitcher";
+import { INVESTORS, toOwnerFilter } from "@/lib/investors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  // Best-effort: fetch fresh prices for all held symbols.
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ owner?: string }>;
+}) {
+  const owner = toOwnerFilter((await searchParams).owner); // null = Together (combined)
+
+  // Best-effort: fetch fresh prices for all held symbols (shared across investors).
   const held = await prisma.transaction.findMany({ select: { security: true }, distinct: ["security"] });
   await refreshPricesIfStale(held.map((h) => h.security));
 
   const { holdings, totals, realizedBySecurity, warnings, pricesFetchedAt, pricedCount } =
-    await getPortfolio();
+    await getPortfolio(owner);
 
   const hasHoldings = holdings.length > 0;
   const realizedEntries = Object.entries(realizedBySecurity);
+  const viewLabel = owner ?? "Together";
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">PSX Portfolio</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            PSX Portfolio <span className="text-neutral-400">· {viewLabel}</span>
+          </h1>
           <p className="text-sm text-neutral-500">
             Finqalab holdings · live prices from PSX ·{" "}
             <span title="Time of the most recent cached price">updated {fmtTime(pricesFetchedAt)}</span>
@@ -41,6 +52,10 @@ export default async function DashboardPage() {
           <RefreshPricesButton />
         </div>
       </header>
+
+      <div className="mb-6">
+        <InvestorSwitcher basePath="/" selected={owner} />
+      </div>
 
       {warnings.length > 0 && (
         <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -140,7 +155,7 @@ export default async function DashboardPage() {
         <aside className="space-y-6">
           <div>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Import</h2>
-            <UploadCard />
+            <UploadCard defaultOwner={owner ?? INVESTORS[0]} />
           </div>
           {hasHoldings && (
             <div>

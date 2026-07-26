@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { parseFinqalabPdf } from "@/lib/finqalab-parser";
 import { prisma } from "@/lib/db";
+import { INVESTORS, isInvestor } from "@/lib/investors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   let file: File | null = null;
+  let owner: string = INVESTORS[0];
   try {
     const form = await req.formData();
     const f = form.get("file");
     if (f && typeof f !== "string") file = f;
+    const o = form.get("owner");
+    if (isInvestor(o)) owner = o;
   } catch {
     return NextResponse.json({ error: "Expected multipart form data with a 'file' field." }, { status: 400 });
   }
@@ -47,6 +51,7 @@ export async function POST(req: Request) {
   if (fresh.length > 0) {
     await prisma.transaction.createMany({
       data: fresh.map((t) => ({
+        owner,
         security: t.security,
         tradeNo: t.tradeNo,
         tradeDate: t.tradeDate,
@@ -65,6 +70,7 @@ export async function POST(req: Request) {
 
   await prisma.importBatch.create({
     data: {
+      owner,
       filename: file.name,
       totalParsed: parsed.trades.length,
       tradesAdded: fresh.length,
@@ -74,6 +80,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     filename: file.name,
+    owner,
     client: parsed.client,
     period: parsed.period,
     totalParsed: parsed.trades.length,

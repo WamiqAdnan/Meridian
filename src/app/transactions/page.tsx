@@ -41,7 +41,8 @@ export default async function TransactionsPage({
           <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
           <p className="text-sm text-neutral-500">
             {trades.length} trade{trades.length === 1 ? "" : "s"} · the ledger holdings are derived from.
-            Delete a row and holdings recompute automatically.
+            Tick rows to reassign several at once, change a single <b>owner</b> inline, or delete a row —
+            holdings recompute automatically.
           </p>
         </div>
         <Link

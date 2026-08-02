@@ -20,6 +20,12 @@ export function fmtPct(n: number | null | undefined): string {
   return `${s}${n.toFixed(2)}%`;
 }
 
+/** "11.89%" — an index weight, which is never signed (unlike fmtPct). */
+export function fmtWeight(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return `${n.toFixed(2)}%`;
+}
+
 /** "+Rs 1,234" / "-Rs 1,234" with sign, whole rupees. */
 export function fmtSignedRs(n: number | null | undefined): string {
   if (n == null) return "—";

@@ -15,12 +15,17 @@
  * numbers, and whatever sits in between is the name.
  */
 
+/** A trailing ex-dividend/bonus/rights ticker. PSX lists FFCXD alongside FFC on those days. */
+const CORPORATE_ACTION_SUFFIX = /(XD|XB|XR)$/;
+
 /** How many numeric columns the full DPS table carries after SYMBOL and NAME. */
 const DPS_NUMERIC_COLUMNS = 9;
 
 export interface ParsedRow {
   /** The ticker exactly as published — what you actually order. */
   symbol: string;
+  /** Suffix-stripped ticker, for matching against a ledger that predates the corporate action. */
+  baseSymbol: string;
   name: string | null;
   /** The CURRENT column. Null when the row didn't carry a usable price. */
   price: number | null;
@@ -78,6 +83,7 @@ function parseLine(line: string): ParsedRow | null {
 
   const row = (name: string | null, ldcp: number | null, price: number | null, weight: number | null): ParsedRow => ({
     symbol,
+    baseSymbol: symbol.replace(CORPORATE_ACTION_SUFFIX, ""),
     name,
     price,
     weight,

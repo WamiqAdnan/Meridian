@@ -100,6 +100,8 @@ const odd = parsePsxTable(
   ].join("\n"),
 );
 eq("ignores the header row", odd.rows.some((r) => r.symbol === "SYMBOL"), false);
+eq("keeps the ex-dividend ticker as published", odd.rows[0].symbol, "FFCXD");
+eq("…and maps it to the base symbol", odd.rows[0].baseSymbol, "FFC");
 eq("a blank price cell parses as no price", odd.rows[1].price, null);
 eq("…while the row's weight survives", odd.rows[1].weight, 0.39);
 eq("accepts a hand-typed SYMBOL price weight", odd.rows[2].price, 538);
@@ -137,6 +139,28 @@ const airlink = fragment.find((r) => r.symbol === "AIRLINK");
 eq("takes CURRENT, not LDCP (135.69)", airlink?.price, 135.86);
 eq("takes IDX WTG", airlink?.weight, 0.45);
 eq("keeps the company name", airlink?.name, "Air Link Communication Limited");
+
+// Ex-dividend tickers only appear during a name's XD window, so the fixture may or may
+// not hold any. On a clean day nothing should be rewritten.
+ok(
+  "leaves ordinary symbols untouched",
+  fragment.every((r) => !/(XD|XB|XR)$/.test(r.symbol) === (r.baseSymbol === r.symbol)),
+);
+
+const xdWindow = parseConstituentsTable(`
+  <table>
+    <thead><tr><th>SYMBOL</th><th>NAME</th><th>LDCP</th><th>CURRENT</th><th>IDX WTG (%)</th></tr></thead>
+    <tbody>
+      <tr><td data-order="FFCXD"><strong>FFCXD</strong></td><td>Fauji Fertilizer Company Limited</td>
+          <td>552.88</td><td data-order="552.96">552.96</td><td>12.12%</td></tr>
+      <tr><td data-order="EFERTXD"><strong>EFERTXD</strong></td><td>Engro Fertilizers Limited</td>
+          <td>185.90</td><td data-order="186.07">186.07</td><td>3.10%</td></tr>
+    </tbody>
+  </table>
+`);
+eq("keeps an ex-dividend ticker as published", xdWindow[0].symbol, "FFCXD");
+eq("…and maps it to the ledger's symbol", xdWindow[0].baseSymbol, "FFC");
+eq("…for every such row", xdWindow[1].baseSymbol, "EFERT");
 
 // Columns are located by header text, so the portal can reorder them without breaking us.
 const shuffled = parseConstituentsTable(`
@@ -176,7 +200,7 @@ const toConstituents = (rows: typeof parsed.rows): Constituent[] =>
   rows.map((r) => ({ symbol: r.symbol, name: r.name, price: r.price!, weight: r.weight! }));
 
 const HELD = ["DGKC", "ENGROH", "FCCL", "FFC", "HUBC", "LUCK", "MEBL", "MLCF", "OGDC", "PPL", "PSO", "SYS"];
-const held = toConstituents(parsed.rows.filter((r) => HELD.includes(r.symbol)));
+const held = toConstituents(parsed.rows.filter((r) => HELD.includes(r.baseSymbol)));
 eq("the fixture covers 12 held names", held.length, 12);
 
 const all25 = must("all 25 @ 300k", planReplication({ amount: 300000, constituents: toConstituents(parsed.rows) }));

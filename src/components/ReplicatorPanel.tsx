@@ -70,7 +70,7 @@ export default function ReplicatorPanel({
     const rows: IndexConstituent[] =
       source === "index" ? (snapshot?.rows ?? []) : parsedPaste.rows;
     return rows.map((r) => {
-      const fallback = r.price == null ? fallbackPrices[r.symbol] : undefined;
+      const fallback = r.price == null ? fallbackPrices[r.baseSymbol] : undefined;
       return {
         ...r,
         resolvedPrice: r.price ?? fallback ?? null,
@@ -98,7 +98,7 @@ export default function ReplicatorPanel({
   // a reminder that a held name may simply not be in the index you picked.
   const missingHeld = useMemo(() => {
     if (basket.length === 0) return [];
-    const present = new Set(basket.map((r) => r.symbol));
+    const present = new Set(basket.map((r) => r.baseSymbol));
     return heldSymbols.filter((s) => !present.has(s));
   }, [basket, heldSymbols]);
 
@@ -190,7 +190,7 @@ export default function ReplicatorPanel({
 
   function selectHoldings() {
     const held = new Set(heldSymbols);
-    keepOnly(new Set(usable.filter((r) => held.has(r.symbol)).map((r) => r.symbol)));
+    keepOnly(new Set(usable.filter((r) => held.has(r.baseSymbol)).map((r) => r.symbol)));
   }
 
   async function copyBuyList() {

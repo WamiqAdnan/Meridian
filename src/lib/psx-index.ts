@@ -19,6 +19,9 @@ const INDICES_URL = "https://dps.psx.com.pk/indices";
 /** Cache window. Weights barely move intraday; prices do, so keep it short. */
 const CACHE_TTL_MS = 60_000;
 
+/** A trailing ex-dividend/bonus/rights ticker — PSX lists FFCXD in place of FFC on those days. */
+const CORPORATE_ACTION_SUFFIX = /(XD|XB|XR)$/;
+
 /**
  * The indices worth replicating, with the portal's own naming. Every code is
  * verified against /indices/{CODE}. This is also the allow-list that keeps a
@@ -47,6 +50,8 @@ export function isIndexCode(v: unknown): v is IndexCode {
 export interface IndexConstituent {
   /** The ticker as published — what you actually order. */
   symbol: string;
+  /** Suffix-stripped ticker, for matching a ledger that predates a corporate action. */
+  baseSymbol: string;
   name: string | null;
   /** The CURRENT column. */
   price: number | null;
@@ -149,6 +154,7 @@ export function parseConstituentsTable(html: string): IndexConstituent[] {
 
     out.push({
       symbol,
+      baseSymbol: symbol.replace(CORPORATE_ACTION_SUFFIX, ""),
       name: idxName >= 0 ? tds.eq(idxName).text().trim() || null : null,
       price: toNumber(cell(idxPrice)),
       weight: toNumber(cell(idxWeight)),

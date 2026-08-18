@@ -414,6 +414,17 @@ would misstate what you own — while every *total* is converted, because a sum
 across currencies is otherwise meaningless. Anything that cannot be converted is
 named in a warning rather than dropped from the total.
 
+**A loading skeleton belongs to one page, not to a subtree.** `loading.tsx` wraps
+every route below its segment in a Suspense boundary, and a response cannot change
+its status once the body has started streaming — so a skeleton at the app root
+turned `/assets/psx:NOPE` from a 404 into a 200. The overview and the markets index
+therefore live in `(overview)` and `(index)` route groups, which keeps their
+skeletons off the dynamic routes beneath them, and the two routes that can 404 have
+no skeleton at all. That is the trade: a status code is worth more than a
+placeholder, and no arrangement keeps both, because reading the id is itself what
+suspends. Add a `loading.tsx` beside a segment that has dynamic children and you
+will re-introduce this; the fix is a route group, not a smaller skeleton.
+
 ---
 
 ## Testing

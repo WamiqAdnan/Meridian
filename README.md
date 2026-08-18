@@ -12,8 +12,15 @@ hosted backend, no market-data subscription required.
 ## What it does today
 
 **Portfolio** — holdings derived by replaying a trade ledger (weighted-average
-cost including fees, realized P&L booked on sells), split by investor or
-combined, with live prices.
+cost including fees, realized P&L booked on sells), across every market at once
+and totalled in one currency. Allocation by market and by asset, best and worst
+performer, and day/week/month movement on what is held now. Split by investor or
+combined.
+
+**Trade entry** — record a trade by hand for anything, not just PSX: pick a
+tracked asset or name a ticker nobody tracks yet, which is verified against a
+price provider before it is added. Quantities are fractional, so 0.05 BTC is a
+position.
 
 **Statement import** — drop in a broker PDF or CSV. Known layouts parse for free;
 an unknown one is handed to an LLM *once*, which writes a declarative parse spec
@@ -148,6 +155,12 @@ src/lib/markets/
   store.ts        the only place market data touches Prisma
   refresh.ts      the refresh job, with a RefreshRun audit row
   view.ts         assembles what the pages render
+
+src/lib/
+  holdings.ts       pure: replays the ledger into positions (asset-class agnostic)
+  ledger.ts         pure: asset resolution + manual-trade validation
+  portfolio.ts      pure: positions, allocation, windowed P&L, multi-currency totals
+  portfolio-view.ts the seam where the portfolio engine meets Prisma
 ```
 
 The engines (`performance.ts`, `currency.ts`) and every provider's payload parser
@@ -159,20 +172,32 @@ it joins to quotes at read time. `Transaction.assetId` is a *soft* reference to
 `Asset.id` with no foreign key, deliberately — the market catalogue can be wiped
 and reseeded without touching a single user-owned row.
 
+**Positions are keyed by asset id, never by ticker.** PSX's LUCK and a US LUCK
+are different instruments; keying by symbol would silently merge them. Rows
+imported before markets existed carry no `assetId` and resolve to `psx:{SYMBOL}`,
+which is the only market whose currency can be safely inferred.
+
+**Two currencies are on screen at once, on purpose.** A position is priced and
+costed in its own currency — rounding a US holding into rupees to display it
+would misstate what you own — while every *total* is converted, because a sum
+across currencies is otherwise meaningless. Anything that cannot be converted is
+named in a warning rather than dropped from the total.
+
 ---
 
 ## Testing
 
-No test runner. Three standalone check scripts, each deterministic and each
+No test runner. Four standalone check scripts, each deterministic and each
 runnable on its own:
 
 ```bash
 npm run check:parse       # statement parser: spec engine, validator, learning schema
 npm run check:replicator  # index replicator: fees, allocation, edge cases
 npm run check:market      # markets: performance, movers, currency, providers, registry
+npm run check:portfolio   # portfolio: asset resolution, manual entry, the engine
 ```
 
-`check:market` runs with no network and no database — provider parsing is
+`check:market` and `check:portfolio` run with no network and no database — provider parsing is
 exercised against captured payloads in `data/reference/market/`, and the registry
 is driven with stub providers to prove routing, fallback and containment of a
 provider that throws.

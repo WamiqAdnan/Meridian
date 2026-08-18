@@ -1,4 +1,4 @@
-import { fmtRs } from "@/lib/format";
+import { fmtMoney } from "@/lib/format";
 
 const PALETTE = [
   "#2563eb", "#16a34a", "#db2777", "#f59e0b", "#7c3aed",
@@ -9,8 +9,11 @@ const OTHERS_COLOR = "#94a3b8";
 
 export default function AllocationDonut({
   data,
+  currency = "PKR",
 }: {
   data: { label: string; value: number }[];
+  /** The currency `value` is stated in. The portfolio page totals in either PKR or USD. */
+  currency?: string;
 }) {
   const positive = data.filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
   if (positive.length === 0) {
@@ -87,7 +90,7 @@ export default function AllocationDonut({
                   <span className="truncate font-medium">{d.label}</span>
                   <span className="tabular-nums text-neutral-500">{pct}%</span>
                 </div>
-                <div className="tabular-nums text-neutral-500">{fmtRs(d.value)}</div>
+                <div className="tabular-nums text-neutral-500">{fmtMoney(d.value, currency)}</div>
               </div>
             </li>
           );

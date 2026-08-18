@@ -1,36 +1,50 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
-import { getPortfolio } from "@/lib/portfolio";
-import { refreshPricesIfStale } from "@/lib/psx-prices";
-import { fmtRs, fmtRs2, fmtPct, fmtSignedRs, fmtQty, fmtTime, pnlColor } from "@/lib/format";
+import { loadPortfolio } from "@/lib/portfolio-view";
+import { refreshIfStale } from "@/lib/markets/refresh";
+import {
+  fmtAgo,
+  fmtMoney,
+  fmtPct,
+  fmtPrice,
+  fmtUnits,
+  pnlColor,
+} from "@/lib/format";
 import UploadCard from "@/components/UploadCard";
-import RefreshPricesButton from "@/components/RefreshPricesButton";
 import AllocationDonut from "@/components/AllocationDonut";
 import InvestorSwitcher from "@/components/InvestorSwitcher";
+import RefreshMarketsButton from "@/components/markets/RefreshMarketsButton";
 import { INVESTORS, toOwnerFilter } from "@/lib/investors";
 import { listKnownParsers } from "@/lib/broker-profiles";
 import { learningBackendLabel } from "@/lib/broker-learn";
+import { DEFAULT_BASE_CURRENCY } from "@/lib/portfolio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * The dashboard: what you hold and how to get more of it into the app.
+ *
+ * Prices now come from the same market pipeline as everything else, rather than
+ * the PSX-only cache this page used to own — so a non-PSX position shows a real
+ * price here instead of a blank.
+ */
 export default async function DashboardPage({
   searchParams,
 }: {
   searchParams: Promise<{ owner?: string }>;
 }) {
   const owner = toOwnerFilter((await searchParams).owner); // null = Together (combined)
+  const base = DEFAULT_BASE_CURRENCY;
 
-  // Best-effort: fetch fresh prices for all held symbols (shared across investors).
-  const held = await prisma.transaction.findMany({ select: { security: true }, distinct: ["security"] });
-  await refreshPricesIfStale(held.map((h) => h.security));
+  await refreshIfStale();
 
-  const { holdings, totals, realizedBySecurity, warnings, pricesFetchedAt, pricedCount } =
-    await getPortfolio(owner);
-  const parsers = await listKnownParsers();
+  const [portfolio, parsers] = await Promise.all([
+    loadPortfolio({ owner, baseCurrency: base }),
+    listKnownParsers(),
+  ]);
+  const { positions, totals, realized, warnings, pricesFetchedAt } = portfolio;
 
-  const hasHoldings = holdings.length > 0;
-  const realizedEntries = Object.entries(realizedBySecurity);
+  const hasHoldings = positions.length > 0;
   const viewLabel = owner ?? "Together";
 
   return (
@@ -38,27 +52,23 @@ export default async function DashboardPage({
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            PSX Portfolio <span className="text-neutral-400">· {viewLabel}</span>
+            Dashboard <span className="font-normal text-muted">· {viewLabel}</span>
           </h1>
-          <p className="text-sm text-neutral-500">
-            Holdings from your broker statements · live prices from PSX ·{" "}
-            <span title="Time of the most recent cached price">updated {fmtTime(pricesFetchedAt)}</span>
+          <p className="text-sm text-muted">
+            Holdings from your statements and manual entries ·{" "}
+            <span title={pricesFetchedAt?.toLocaleString() ?? undefined}>
+              prices updated {fmtAgo(pricesFetchedAt)}
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/replicate"
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            href="/portfolio"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface-raised"
           >
-            Replicate
+            Full portfolio →
           </Link>
-          <Link
-            href="/transactions"
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
-          >
-            Transactions
-          </Link>
-          <RefreshPricesButton />
+          <RefreshMarketsButton />
         </div>
       </header>
 
@@ -67,68 +77,75 @@ export default async function DashboardPage({
       </div>
 
       {warnings.length > 0 && (
-        <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <div className="mb-4 space-y-1 rounded-xl border border-line bg-surface-raised p-3 text-sm text-muted">
           {warnings.map((w, i) => (
             <div key={i}>⚠ {w}</div>
           ))}
         </div>
       )}
 
-      {/* Summary cards */}
       <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card label="Invested (incl. fees)" value={fmtRs(totals.invested)} sub={`${totals.positions} positions`} />
-        <Card label="Market value" value={fmtRs(totals.marketValue)} />
+        <Card
+          label={`Invested (${base}, incl. fees)`}
+          value={fmtMoney(totals.invested, base)}
+          sub={`${totals.positions} position${totals.positions === 1 ? "" : "s"}`}
+        />
+        <Card label={`Market value (${base})`} value={fmtMoney(totals.marketValue, base)} />
         <Card
           label="Unrealized P&L"
-          value={fmtSignedRs(totals.unrealizedPnl)}
+          value={fmtMoney(totals.unrealizedPnl, base)}
           sub={fmtPct(totals.unrealizedPnlPct)}
           color={pnlColor(totals.unrealizedPnl)}
         />
         <Card
           label="Realized P&L"
-          value={fmtSignedRs(totals.realizedTotal)}
+          value={fmtMoney(totals.realizedTotal, base)}
           color={pnlColor(totals.realizedTotal)}
         />
       </section>
 
-      {pricedCount < holdings.length && (
-        <div className="mb-4 rounded-lg bg-neutral-100 p-3 text-sm text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
-          Live prices unavailable for {holdings.length - pricedCount} of {holdings.length} holdings — showing cost as a fallback. Try “Refresh prices”.
-        </div>
-      )}
-
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Holdings table */}
         <section className="lg:col-span-2">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Holdings</h2>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Holdings</h2>
           {hasHoldings ? (
-            <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
+            <div className="overflow-x-auto rounded-xl border border-line">
               <table className="w-full text-sm">
-                <thead className="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500 dark:bg-neutral-900">
+                <thead className="bg-surface-raised text-left text-xs uppercase tracking-wide text-muted">
                   <tr>
                     <th className="px-3 py-2">Symbol</th>
                     <th className="px-3 py-2 text-right">Qty</th>
                     <th className="px-3 py-2 text-right">Avg cost</th>
                     <th className="px-3 py-2 text-right">Price</th>
                     <th className="px-3 py-2 text-right">Day</th>
-                    <th className="px-3 py-2 text-right">Value</th>
-                    <th className="px-3 py-2 text-right">P&L</th>
+                    <th className="px-3 py-2 text-right">Value ({base})</th>
+                    <th className="px-3 py-2 text-right">P&amp;L</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {holdings.map((h) => (
-                    <tr key={h.security} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/50">
-                      <td className="px-3 py-2 font-semibold">{h.security}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtQty(h.qty)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtRs2(h.avgCostInclFees)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtRs2(h.livePrice)}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${pnlColor(h.dayChangePct)}`}>
-                        {fmtPct(h.dayChangePct)}
+                <tbody className="divide-y divide-line">
+                  {positions.map((p) => (
+                    <tr key={p.assetId} className="hover:bg-surface-raised/60">
+                      <td className="px-3 py-2">
+                        <span className="font-semibold">{p.symbol}</span>
+                        <div className="text-xs text-muted">{p.marketLabel}</div>
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtRs(h.marketValue)}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${pnlColor(h.unrealizedPnl)}`}>
-                        <div>{fmtSignedRs(h.unrealizedPnl)}</div>
-                        <div className="text-xs opacity-80">{fmtPct(h.unrealizedPnlPct)}</div>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(p.qty)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {p.currency ? fmtPrice(p.avgCostInclFees, p.currency) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {p.currency ? fmtPrice(p.price, p.currency) : "—"}
+                      </td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${pnlColor(p.dayChangePct)}`}>
+                        {fmtPct(p.dayChangePct)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {p.baseValue != null || p.baseCost != null
+                          ? fmtMoney(p.baseValue ?? p.baseCost, base)
+                          : "—"}
+                      </td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${pnlColor(p.baseUnrealizedPnl)}`}>
+                        <div>{p.baseUnrealizedPnl != null ? fmtMoney(p.baseUnrealizedPnl, base) : "—"}</div>
+                        <div className="text-xs opacity-80">{fmtPct(p.unrealizedPnlPct)}</div>
                       </td>
                     </tr>
                   ))}
@@ -136,23 +153,33 @@ export default async function DashboardPage({
               </table>
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 dark:border-neutral-700">
-              No holdings yet. Upload a Finqalab report to get started →
+            <div className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
+              No holdings yet. Upload a broker statement here, or{" "}
+              <Link href="/portfolio" className="text-accent underline-offset-2 hover:underline">
+                record a trade by hand
+              </Link>
+              .
             </div>
           )}
 
-          {realizedEntries.length > 0 && (
+          {realized.length > 0 && (
             <div className="mt-6">
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                Realized P&L (from sells)
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+                Realized P&amp;L (from sells)
               </h2>
               <div className="flex flex-wrap gap-2">
-                {realizedEntries.map(([sym, pnl]) => (
+                {/* Shown in the asset's own currency — that is the amount that
+                    was actually booked. Only the header total is converted. */}
+                {realized.map((r) => (
                   <span
-                    key={sym}
-                    className={`rounded-lg border border-neutral-200 px-2.5 py-1 text-xs dark:border-neutral-800 ${pnlColor(pnl)}`}
+                    key={r.assetId}
+                    className={`rounded-lg border border-line px-2.5 py-1 text-xs ${pnlColor(r.amount)}`}
+                    title={
+                      r.baseAmount != null ? `${fmtMoney(r.baseAmount, base)} in ${base}` : undefined
+                    }
                   >
-                    <b className="text-neutral-700 dark:text-neutral-300">{sym}</b> {fmtSignedRs(pnl)}
+                    <b className="text-foreground">{r.symbol}</b>{" "}
+                    {r.currency ? fmtMoney(r.amount, r.currency) : r.amount.toFixed(2)}
                   </span>
                 ))}
               </div>
@@ -160,20 +187,19 @@ export default async function DashboardPage({
           )}
         </section>
 
-        {/* Sidebar */}
         <aside className="space-y-6">
           <div>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Import</h2>
+            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Import</h2>
             <UploadCard defaultOwner={owner ?? INVESTORS[0]} learningBackend={learningBackendLabel()} />
             {parsers.length > 0 && (
-              <p className="mt-2 text-xs text-neutral-500">
+              <p className="mt-2 text-xs text-muted">
                 <span className="font-medium">Brokers we can read:</span>{" "}
                 {parsers.map((p, i) => (
                   <span key={p.slug}>
                     {i > 0 && " · "}
                     <span title={p.source === "builtin" ? "Built in" : "Learned from an upload"}>
                       {p.broker}
-                      {p.source === "llm" && <span className="text-neutral-400"> (learned)</span>}
+                      {p.source === "llm" && <span className="text-muted"> (learned)</span>}
                     </span>
                   </span>
                 ))}
@@ -182,10 +208,15 @@ export default async function DashboardPage({
           </div>
           {hasHoldings && (
             <div>
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Allocation</h2>
-              <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+                Allocation
+              </h2>
+              <div className="rounded-xl border border-line p-4">
                 <AllocationDonut
-                  data={holdings.map((h) => ({ label: h.security, value: h.marketValue ?? h.totalCost }))}
+                  data={positions
+                    .filter((p) => (p.baseValue ?? p.baseCost) != null)
+                    .map((p) => ({ label: p.symbol, value: (p.baseValue ?? p.baseCost)! }))}
+                  currency={base}
                 />
               </div>
             </div>
@@ -208,10 +239,10 @@ function Card({
   color?: string;
 }) {
   return (
-    <div className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
-      <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</div>
+    <div className="rounded-xl border border-line p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
       <div className={`mt-1 text-xl font-bold tabular-nums ${color ?? ""}`}>{value}</div>
-      {sub && <div className={`text-xs tabular-nums ${color ?? "text-neutral-500"}`}>{sub}</div>}
+      {sub && <div className={`text-xs tabular-nums ${color ?? "text-muted"}`}>{sub}</div>}
     </div>
   );
 }

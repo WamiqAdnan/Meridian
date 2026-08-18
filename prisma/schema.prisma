@@ -23,7 +23,9 @@ model Transaction {
   settlementDate String
   side           String // BUY | SELL
   rate           Float // execution price per share
-  qty            Int
+  /// Float, not Int: a share count is whole but a crypto position is not, and
+  /// 0.05 BTC has to be representable in the same ledger as 500 LUCK.
+  qty            Float
   grossAmount    Float // rate * qty
   brokerage      Float // total broker commission for the trade
   cvt            Float
@@ -38,15 +40,6 @@ model Transaction {
   @@index([assetId])
   @@index([tradeDate])
   @@index([owner])
-}
-
-/// Cached live prices from the PSX market-watch feed.
-model PriceCache {
-  symbol    String   @id
-  lastPrice Float
-  change    Float?
-  changePct Float?
-  fetchedAt DateTime @default(now())
 }
 
 /// History of PDF imports (for display / audit).

@@ -37,6 +37,22 @@ export function fmtQty(n: number): string {
   return pkr0.format(n);
 }
 
+/**
+ * A holding size.
+ *
+ * Whole shares print whole; a fractional crypto position keeps its digits. Using
+ * `fmtQty` here would render 0.05 BTC as "0", which is a holding the app claims
+ * you do not have.
+ */
+export function fmtUnits(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (Number.isInteger(n)) return pkr0.format(n);
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  }).format(n);
+}
+
 /** Tailwind text-colour class for a P&L value. */
 export function pnlColor(n: number | null | undefined): string {
   if (n == null) return "text-neutral-400";

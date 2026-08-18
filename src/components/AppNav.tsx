@@ -7,12 +7,12 @@ import { BRAND } from "@/lib/brand";
 /**
  * The primary navigation, shared by every page.
  *
- * Every existing route is kept and unchanged; `Markets` is the only addition.
- * `Overview` and `Insights` join once the pages behind them exist — a nav link
- * to a 404 is worse than a shorter nav.
+ * `Insights` joins once the page behind it exists — a nav link to a 404 is worse
+ * than a shorter nav.
  */
 const LINKS = [
-  { href: "/", label: "Portfolio" },
+  { href: "/", label: "Dashboard" },
+  { href: "/portfolio", label: "Portfolio" },
   { href: "/markets", label: "Markets" },
   { href: "/transactions", label: "Transactions" },
   { href: "/replicate", label: "Replicate" },

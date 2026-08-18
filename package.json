@@ -15,7 +15,8 @@
     "check:replicator": "tsx scripts/check-replicator.ts",
     "market:refresh": "tsx scripts/refresh-market.ts",
     "market:backfill": "tsx scripts/refresh-market.ts --history",
-    "check:market": "tsx scripts/check-market.ts"
+    "check:market": "tsx scripts/check-market.ts",
+    "check:portfolio": "tsx scripts/check-portfolio.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

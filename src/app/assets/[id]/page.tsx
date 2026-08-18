@@ -61,13 +61,20 @@ function toPeriod(v: unknown): Period {
   return typeof v === "string" && (PERIODS as readonly string[]).includes(v) ? (v as Period) : "month";
 }
 
+/**
+ * `generateMetadata` resolves before the page and outside its error boundary, so
+ * anything it throws is an unstyled 500 rather than the app's error page —
+ * measured by pointing DATABASE_URL at a file that does not exist. It reads the
+ * database, so it swallows its own failure and lets the page below raise the same
+ * problem somewhere a reader can see it.
+ */
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const id = toAssetId((await params).id);
-  const detail = id ? await loadAssetDetail(id) : null;
+  const detail = id ? await loadAssetDetail(id).catch(() => null) : null;
   if (!detail) return { title: "Asset" };
   const { asset } = detail;
   return {

@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { fmtCompact, fmtPrice } from "@/lib/format";
+import { assetHref } from "@/lib/routes";
 import Change from "./Change";
 import Sparkline from "./Sparkline";
 import type { AssetView } from "@/lib/markets/view";
@@ -40,7 +42,9 @@ export default function AssetTable({ assets }: { assets: AssetView[] }) {
           {assets.map((a) => (
             <tr key={a.id} className="hover:bg-surface-raised/60">
               <th scope="row" className="px-3 py-2 text-left font-normal">
-                <div className="font-semibold">{a.symbol}</div>
+                <Link href={assetHref(a.id)} className="font-semibold hover:text-accent">
+                  {a.symbol}
+                </Link>
                 <div className="max-w-[16rem] truncate text-xs font-normal text-muted">{a.name}</div>
               </th>
               <td className="px-3 py-2 text-right tabular-nums">{fmtPrice(a.price, a.currency)}</td>

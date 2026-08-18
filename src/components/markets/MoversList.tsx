@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { fmtPrice } from "@/lib/format";
+import { assetHref } from "@/lib/routes";
 import Change from "./Change";
 import type { AssetView } from "@/lib/markets/view";
 import type { Mover } from "@/lib/markets/performance";
@@ -11,6 +12,11 @@ import { MARKET_META } from "@/lib/markets/types";
  * Each row names the market it came from, because the whole point of a
  * cross-market list is that a PSX cement stock and a US energy ETF can sit next
  * to each other and you can still tell which is which.
+ *
+ * Each row links to the *asset*, not its market. A reader who clicks a mover wants
+ * that mover; sending them to the market page it happened to be listed under —
+ * which is what this did before `/assets/[id]` existed — answers a question they
+ * did not ask.
  */
 export default function MoversList({
   title,
@@ -33,7 +39,7 @@ export default function MoversList({
           {movers.map(({ item, changePct, change }) => (
             <li key={item.id}>
               <Link
-                href={`/markets/${item.market}`}
+                href={assetHref(item.id)}
                 className="flex items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-surface-raised"
               >
                 <span className="min-w-0">

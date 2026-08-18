@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AI_DISCLAIMER } from "@/lib/brand";
+import { assetHref } from "@/lib/routes";
 import { fmtAgo, fmtPrice } from "@/lib/format";
 import type { MatchVia } from "@/lib/news/types";
 import {
@@ -58,7 +59,9 @@ function Reading({ reading }: { reading: ResolvedReading }) {
     <li className="px-3 py-3">
       {/* FACT — computed from daily closes. */}
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="font-medium">{fact.symbol}</span>
+        <Link href={assetHref(fact.assetId)} className="font-medium hover:text-accent">
+          {fact.symbol}
+        </Link>
         <span className="text-sm text-muted">{fact.name}</span>
         <Change changePct={fact.changePct} currency={fact.currency} className="text-sm font-medium" />
         <span className="text-xs text-muted tabular-nums">

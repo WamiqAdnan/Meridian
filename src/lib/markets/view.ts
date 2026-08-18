@@ -8,9 +8,9 @@
  * The engines stay pure; this is the seam where they meet stored data.
  */
 import { computePerformance, topMovers, type AssetPerformance, type Period } from "./performance";
-import { daysAgo, listAssetsWithQuotes, loadBars, type AssetWithQuote } from "./store";
+import { daysAgo, getAsset, listAssetsWithQuotes, loadBars, type AssetWithQuote } from "./store";
 import { fxTableFromAssets, type FxTable } from "./currency";
-import { MARKET_META, isNotional, type Market } from "./types";
+import { MARKET_META, isNotional, type BarData, type Market } from "./types";
 
 /** An asset with everything a row or card needs. */
 export interface AssetView extends AssetWithQuote {
@@ -72,6 +72,50 @@ export async function loadAssetViews(options: { market?: Market } = {}): Promise
   return {
     assets: options.market ? assets.filter((a) => a.market === options.market) : assets,
     fx,
+  };
+}
+
+/**
+ * How much history one asset's own page loads. Two years, matching the backfill's
+ * default range — more than the longest window the UI reports, which is the rule
+ * the whole market layer follows.
+ */
+const DETAIL_DAYS = 800;
+
+export interface AssetDetail {
+  asset: AssetView;
+  /**
+   * The whole loaded series, oldest-first.
+   *
+   * Returned alongside the asset rather than folded into it: `AssetView.spark` is
+   * thirty points trimmed for a sparkline, and a chart with axes needs the real
+   * series. One is not a substitute for the other.
+   */
+  bars: BarData[];
+}
+
+/**
+ * One asset in full, or null if nothing by that id is tracked.
+ *
+ * Inactive assets resolve, deliberately — an asset switched off still has a page,
+ * a history and a position behind it, and a dead link from the ledger would be
+ * worse than a page that says it is no longer tracked.
+ */
+export async function loadAssetDetail(
+  id: string,
+  days = DETAIL_DAYS,
+): Promise<AssetDetail | null> {
+  const row = await getAsset(id);
+  if (!row) return null;
+
+  const bars = (await loadBars([id], daysAgo(days))).get(id) ?? [];
+  return {
+    asset: {
+      ...row,
+      performance: computePerformance(id, bars),
+      spark: bars.slice(-SPARK_POINTS).map((b) => b.close),
+    },
+    bars,
   };
 }
 

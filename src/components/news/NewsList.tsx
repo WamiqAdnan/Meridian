@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fmtAgo } from "@/lib/format";
 import { MARKET_META } from "@/lib/markets/types";
+import { assetHref } from "@/lib/routes";
 import { groupByDay } from "@/lib/news/view";
 import type { NewsItem } from "@/lib/news/store";
 import type { MatchVia } from "@/lib/news/types";
@@ -31,7 +32,7 @@ function AssetChips({ matches }: { matches: NewsItem["matches"] }) {
       {shown.map((m) => (
         <Link
           key={m.assetId}
-          href={`/markets/${m.market}`}
+          href={assetHref(m.assetId)}
           title={`${m.name} — ${VIA_LABEL[m.via]} this article (confidence ${m.score.toFixed(2)})`}
           className={`rounded border px-1.5 py-0.5 text-[11px] tabular-nums transition-colors hover:bg-surface-raised ${
             m.score >= STRONG

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { refreshMarketData } from "@/lib/markets/refresh";
-import { isMarket, type Market } from "@/lib/markets/types";
+import { isMarket, type HistoryRange, type Market } from "@/lib/markets/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export const maxDuration = 300;
  * Quote-only by default. `history` also pulls daily bars, which is the slow path
  * and normally belongs in the scheduled job rather than a button.
  */
-const RANGES = new Set(["1mo", "3mo", "6mo", "1y"]);
+const RANGES = new Set(["1mo", "3mo", "6mo", "1y", "2y"]);
 
 export async function POST(req: Request) {
   let body: { market?: unknown; history?: unknown; range?: unknown } = {};
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     market = body.market;
   }
 
-  const range = typeof body.range === "string" ? body.range : "1y";
+  const range = typeof body.range === "string" ? body.range : "2y";
   if (body.history === true && !RANGES.has(range)) {
     return NextResponse.json({ error: `Unknown range: ${range}` }, { status: 400 });
   }
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   try {
     const outcome = await refreshMarketData({
       market,
-      range: body.history === true ? (range as "1mo" | "3mo" | "6mo" | "1y") : undefined,
+      range: body.history === true ? (range as Exclude<HistoryRange, "none">) : undefined,
     });
     return NextResponse.json({
       mode: outcome.mode,

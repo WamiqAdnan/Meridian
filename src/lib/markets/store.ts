@@ -69,6 +69,12 @@ function toRef(row: AssetRow): AssetRef {
  * asset the user has switched off stays off across restarts.
  */
 export async function seedCatalogue(): Promise<{ seeded: number }> {
+  // This runs before every refresh, including one triggered by a page render.
+  // Once the catalogue is fully present there is nothing to write, so skip the
+  // ~90 upserts rather than repeat them on each stale page load.
+  const present = await prisma.asset.count({ where: { id: { in: CATALOGUE.map((a) => a.id) } } });
+  if (present === CATALOGUE.length) return { seeded: 0 };
+
   for (const a of CATALOGUE) {
     await prisma.asset.upsert({
       where: { id: a.id },

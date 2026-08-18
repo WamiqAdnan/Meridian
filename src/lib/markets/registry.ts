@@ -104,12 +104,18 @@ export async function fetchAssets(
     }
 
     for (const asset of unroutable) {
-      if (isComplete(results.get(asset.id), range)) continue;
+      const existing = results.get(asset.id);
+      // Keep anything that already carries a price. On the retry round an asset
+      // reaches here when no untried provider is left — including one that was
+      // quoted but had no history. Overwriting it with a null result would throw
+      // away a good price to record "no provider", which is both a lie and worse
+      // data than what we had.
+      if (existing?.quote) continue;
       results.set(asset.id, {
         assetId: asset.id,
         quote: null,
         bars: [],
-        error: results.get(asset.id)?.error ?? `No provider is configured to price ${asset.symbol}.`,
+        error: existing?.error ?? `No provider is configured to price ${asset.symbol}.`,
       });
     }
 

@@ -49,6 +49,17 @@ export async function ensureCatalogue(): Promise<void> {
   await syncLedgerAssets();
 }
 
+/** Assets a given refresh would touch — the set staleness should be judged over. */
+async function scopeIds(options: RefreshOptions): Promise<string[] | undefined> {
+  if (options.ids) return options.ids;
+  if (!options.market) return undefined; // everything
+  const rows = await prisma.asset.findMany({
+    where: { market: options.market, active: true },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
 export async function refreshMarketData(options: RefreshOptions = {}): Promise<RefreshOutcome> {
   const startedAt = new Date();
   const mode = options.range ? "backfill" : "quotes";
@@ -110,11 +121,21 @@ export async function refreshIfStale(
 ): Promise<void> {
   const maxAge = options.maxAgeMs ?? QUOTE_TTL_MS;
   try {
-    const newest = await prisma.quote.findFirst({
-      orderBy: { fetchedAt: "desc" },
-      select: { fetchedAt: true },
-    });
-    if (newest && Date.now() - newest.fetchedAt.getTime() < maxAge) return;
+    // Staleness is judged over the assets this call would actually refresh.
+    // Asking globally meant a fresh crypto quote suppressed an hour-stale PSX
+    // refresh on /markets/psx.
+    const ids = await scopeIds(options);
+    const [newest, quoted] = await Promise.all([
+      prisma.quote.findFirst({
+        where: ids ? { assetId: { in: ids } } : undefined,
+        orderBy: { fetchedAt: "desc" },
+        select: { fetchedAt: true },
+      }),
+      prisma.quote.count({ where: ids ? { assetId: { in: ids } } : undefined }),
+    ]);
+    const fresh = newest && Date.now() - newest.fetchedAt.getTime() < maxAge;
+    // An asset that has never been quoted is stale no matter how new the rest are.
+    if (fresh && (!ids || quoted >= ids.length)) return;
     await refreshMarketData(options);
   } catch {
     // Offline, or an upstream is down. Whatever is cached still renders.

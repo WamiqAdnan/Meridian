@@ -24,6 +24,7 @@ import {
   RANGE_DAYS,
   type AssetRef,
   type BarData,
+  type HistoryRange,
   type MarketDataProvider,
   type ProviderQuoteResult,
   type QuoteData,
@@ -89,9 +90,8 @@ export function parseEodPayload(
   return { bars, error: bars.length === 0 ? "PSX EOD feed returned no usable rows." : null };
 }
 
-function earliestDateFor(range: Exclude<Parameters<MarketDataProvider["fetch"]>[1], "none">): string {
-  const days = RANGE_DAYS[range];
-  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+function earliestDateFor(range: Exclude<HistoryRange, "none">): string {
+  return new Date(Date.now() - RANGE_DAYS[range] * 86_400_000).toISOString().slice(0, 10);
 }
 
 export const psxProvider: MarketDataProvider = {
@@ -150,6 +150,11 @@ export const psxProvider: MarketDataProvider = {
     return assets.map((asset): ProviderQuoteResult => {
       const bars = eodFor.get(asset.id) ?? [];
       const tick = live.get(asset.sourceSymbol);
+      // An index quote needs the EOD feed even on a quote-only refresh, but the
+      // feed has no range parameter and returns ~1,200 rows. Persisting those on
+      // every few-minute refresh would rewrite five years of unchanged history;
+      // the quote below is already derived from them, so drop them here.
+      const barsToPersist = wantHistory ? bars : [];
 
       const quote: QuoteData | null = tick
         ? {
@@ -169,7 +174,7 @@ export const psxProvider: MarketDataProvider = {
       return {
         assetId: asset.id,
         quote,
-        bars,
+        bars: barsToPersist,
         error: quote ? null : (eodError.get(asset.id) ?? liveError ?? "No PSX data for this symbol."),
       };
     });

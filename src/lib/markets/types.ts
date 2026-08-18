@@ -189,7 +189,7 @@ export interface BarData {
  * refresh skips history entirely and only the daily backfill pays for it — which
  * is what keeps a metered provider like CoinGecko inside its monthly allowance.
  */
-export type HistoryRange = "none" | "1mo" | "3mo" | "6mo" | "1y";
+export type HistoryRange = "none" | "1mo" | "3mo" | "6mo" | "1y" | "2y";
 
 /** Calendar days each range covers, for providers that want a day count. */
 export const RANGE_DAYS: Record<Exclude<HistoryRange, "none">, number> = {
@@ -197,6 +197,7 @@ export const RANGE_DAYS: Record<Exclude<HistoryRange, "none">, number> = {
   "3mo": 90,
   "6mo": 180,
   "1y": 365,
+  "2y": 730,
 };
 
 /**

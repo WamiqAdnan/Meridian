@@ -653,6 +653,12 @@ async function checkRegistry() {
   const quotesOnlyRequest = await fetchAssets([good], "none", [quoteOnly, rescue]);
   eq("but not when only a quote was asked for", quotesOnlyRequest[0].bars.length, 0);
 
+  // The case with no fallback available: the partial result must survive rather
+  // than be replaced by a null one on the way out.
+  const noFallback = await fetchAssets([good], "1mo", [quoteOnly]);
+  eq("a quote with no history survives when nothing can supply bars", noFallback[0].quote?.price, 100);
+  eq("and its bars stay empty", noFallback[0].bars.length, 0);
+
   section("Registry contract");
 
   const many = [good, orphan, testAsset({ id: "stocks:X", symbol: "X", source: "alpha" })];

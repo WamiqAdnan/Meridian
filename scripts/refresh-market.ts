@@ -2,7 +2,7 @@
  * Fetch market data into the local database.
  *
  *   npm run market:refresh              quotes only, every tracked asset
- *   npm run market:backfill             quotes + a year of daily bars
+ *   npm run market:backfill             quotes + two years of daily bars
  *   npm run market:backfill -- --range=1y --market=crypto
  *   npm run market:refresh  -- --missing    only assets with no history yet
  *
@@ -19,7 +19,7 @@ function arg(name: string): string | undefined {
   return hit?.slice(name.length + 3);
 }
 
-const RANGES = new Set(["1mo", "3mo", "6mo", "1y"]);
+const RANGES = new Set(["1mo", "3mo", "6mo", "1y", "2y"]);
 
 async function main() {
   const rangeArg = arg("range");
@@ -36,10 +36,12 @@ async function main() {
   const market = marketArg === undefined ? undefined : (marketArg as Market);
 
   const wantHistory = process.argv.includes("--history") || rangeArg !== undefined;
-  // A year by default: the longest window the UI reports is 1Y, and a backfill
-  // shorter than the window it feeds just makes every long period read
-  // "insufficient data". Costs the same one call per asset either way.
-  const range = (rangeArg ?? "1y") as Exclude<HistoryRange, "none">;
+  // Two years by default. The longest window the UI reports is 1Y, and that
+  // window needs a bar at or *before* the boundary — fetching exactly 365 days
+  // leaves nothing behind it, so 1Y read "insufficient data" for all but the
+  // few assets whose provider volunteered extra history. Same one call per
+  // asset either way.
+  const range = (rangeArg ?? "2y") as Exclude<HistoryRange, "none">;
 
   await ensureCatalogue();
 

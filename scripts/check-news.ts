@@ -46,7 +46,7 @@ import {
   fetchNews,
   mergeArticles,
 } from "@/lib/news/registry";
-import { buildQueries, matchOutcomes } from "@/lib/news/ingest";
+import { buildQueries, coveringScopes, matchOutcomes } from "@/lib/news/ingest";
 import {
   assetQuery,
   marketQuery,
@@ -55,7 +55,7 @@ import {
   type NewsArticle,
   type NewsProvider,
 } from "@/lib/news/types";
-import type { AssetRef, BarData } from "@/lib/markets/types";
+import { MARKETS, type AssetRef, type BarData } from "@/lib/markets/types";
 
 let failures = 0;
 let checks = 0;
@@ -814,6 +814,20 @@ function checkIngest() {
   );
   eq("but its results are still matched on their text", alsoSearched[0].matches.length, 1);
   eq("attributed honestly", alsoSearched[0].matches[0].via, "name");
+
+  // What `ingestIfStale` judges staleness over. Coverage runs one way: a global
+  // sweep stands in for any market, and no market stands in for the sweep. Asking
+  // over every recent run regardless of scope meant a single visit to
+  // /markets/psx suppressed the overview's 8-market ingest for half an hour.
+  eq("an unscoped sweep is covered by the global run alone", coveringScopes().join(","), "all");
+  ok("a market's own run does not cover the sweep", !coveringScopes().includes("psx"));
+  ok("a market request is covered by its own run", coveringScopes("psx").includes("psx"));
+  ok("and by a global sweep, which asked for strictly more", coveringScopes("psx").includes("all"));
+  ok("every market is covered by the global sweep", MARKETS.every((m) => coveringScopes(m).includes("all")));
+  ok(
+    "and by nothing else",
+    MARKETS.every((m) => coveringScopes(m).every((s) => s === m || s === "all")),
+  );
 }
 
 /* ------------------------------------------------------------------------ run */

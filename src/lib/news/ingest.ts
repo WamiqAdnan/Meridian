@@ -31,6 +31,9 @@ import { assetQuery, marketQuery, queryKey, type NewsProvider, type NewsQuery } 
 /** How stale the newest article may be before `ingestIfStale` refetches. */
 export const NEWS_TTL_MS = 30 * 60_000;
 
+/** The `NewsRun.scope` a sweep with no market filter records. */
+const ALL_SCOPE = "all";
+
 /** Days of headlines to ask for. A week is the window Phase D reasons over. */
 const DEFAULT_DAYS = 7;
 
@@ -136,7 +139,7 @@ export function matchOutcomes(
 
 export async function ingestNews(options: IngestOptions = {}): Promise<IngestOutcome> {
   const startedAt = new Date();
-  const scope = options.market ?? "all";
+  const scope = options.market ?? ALL_SCOPE;
   const since = daysAgo(options.days ?? DEFAULT_DAYS);
 
   const run = await prisma.newsRun.create({ data: { scope } });
@@ -203,6 +206,19 @@ export async function ingestNews(options: IngestOptions = {}): Promise<IngestOut
 }
 
 /**
+ * The run scopes that would have covered a request for `market`.
+ *
+ * Coverage runs one way only. A sweep with no market filter queries every market
+ * and every newsworthy asset, so it covers anything a single-market request would
+ * have asked; a `psx` run covers nothing but `psx`. Judging staleness over *any*
+ * recent run therefore let the narrow case suppress the broad one — the same bug
+ * `refreshIfStale` fixed with `scopeIds`, in the same shape.
+ */
+export function coveringScopes(market?: Market): string[] {
+  return market ? [market, ALL_SCOPE] : [ALL_SCOPE];
+}
+
+/**
  * Ingest only if the newest article is older than `maxAgeMs`.
  *
  * Swallows failures on purpose — this runs on page render, and a page showing
@@ -214,8 +230,11 @@ export async function ingestIfStale(
 ): Promise<void> {
   const maxAge = options.maxAgeMs ?? NEWS_TTL_MS;
   try {
+    // Staleness is judged over runs that actually covered what this call asks
+    // for. Asking with no scope filter meant one visit to /markets/psx satisfied
+    // the overview's 8-market sweep for the next half hour.
     const newest = await prisma.newsRun.findFirst({
-      where: { finishedAt: { not: null }, ...(options.market ? { scope: options.market } : {}) },
+      where: { finishedAt: { not: null }, scope: { in: coveringScopes(options.market) } },
       orderBy: { startedAt: "desc" },
       select: { finishedAt: true },
     });

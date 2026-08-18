@@ -430,7 +430,7 @@ will re-introduce this; the fix is a route group, not a smaller skeleton.
 ## Testing
 
 No test runner. Eight standalone check scripts, each deterministic and each
-runnable on its own — 1,423 checks in total:
+runnable on its own — 1,432 checks in total:
 
 ```bash
 npm run check:parse       # statement parser: spec engine, validator, learning loop

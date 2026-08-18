@@ -36,13 +36,32 @@ interface Position {
 }
 
 /**
+ * How close to zero a quantity has to be to count as closed.
+ *
+ * `Transaction.qty` is a `Float` because a crypto position is not a whole number,
+ * and that makes an exact `> 0` test wrong: buying 0.1 and 0.2 gives
+ * 0.30000000000000004, so selling 0.3 leaves 4e-17 behind. Without a tolerance
+ * that residue is a live holding — a row showing "0.00" units with a cost basis
+ * rounded to zero — and the mirror case (buy 0.3, sell 0.1 then 0.2) trips the
+ * over-sell warning on a ledger that balances exactly.
+ *
+ * 1e-9 has an order of magnitude of clearance on both sides: it is far above the
+ * ~1e-12 noise fractional quantities actually accumulate, and far below 1e-8, the
+ * smallest unit any of these assets is quoted in. Whole-share quantities are exact
+ * in binary floating point up to 2^53, so PSX positions never come near it. It is
+ * the same threshold `realized` is already tested against below.
+ */
+const QTY_EPSILON = 1e-9;
+
+/**
  * Replay the whole ledger in chronological order to derive current holdings.
  *
  * - BUY  → increase qty and blend the weighted-average cost (fees included in cost basis).
  * - SELL → book realized P&L = qty*(sellRate - avgCostInclFees) - sellFees, reduce qty,
  *          and scale cost/fees down proportionally so the average cost is preserved.
- * - Any position that reaches qty 0 is dropped from `holdings`.
- * - An over-sell (selling more than held) is clamped to the held qty with a warning.
+ * - Any position that reaches qty 0 — within `QTY_EPSILON` — is dropped from `holdings`.
+ * - An over-sell (selling more than held, by more than `QTY_EPSILON`) is clamped to
+ *   the held qty with a warning.
  */
 export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
   const ordered = [...trades].sort((a, b) =>
@@ -69,10 +88,15 @@ export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
     } else {
       // SELL
       let sellQty = t.qty;
-      if (sellQty > p.qty) {
+      // Only a sell that overshoots by more than float noise is a real over-sell.
+      // Selling exactly what is held can land a hair above it — see QTY_EPSILON —
+      // and warning about that would flag a ledger that balances.
+      if (sellQty > p.qty + QTY_EPSILON) {
         warnings.push(
           `Over-sell of ${t.security}: sold ${t.qty} but only ${p.qty} held (trade ${t.tradeNo}); clamped.`,
         );
+        sellQty = p.qty;
+      } else if (sellQty > p.qty) {
         sellQty = p.qty;
       }
       const avgCostInclFees = p.qty > 0 ? (p.grossCost + p.fees) / p.qty : 0;
@@ -95,7 +119,7 @@ export function computeHoldings(trades: LedgerTrade[]): HoldingsResult {
       realizedBySecurity[security] = round2(p.realized);
       realizedTotal += p.realized;
     }
-    if (p.qty > 0) {
+    if (p.qty > QTY_EPSILON) {
       const totalCost = p.grossCost + p.fees;
       holdings.push({
         security,

@@ -548,6 +548,79 @@ function checkEmptyAndUsdBase() {
   eq("allocation re-sorts under a different base", usd.byAsset[0].key, "stocks:AAPL");
 }
 
+/* ------------------------------------------------- fractional quantities */
+
+/**
+ * A closed fractional position must disappear, and closing one must not look
+ * like an over-sell.
+ *
+ * `Transaction.qty` is a `Float` so that 0.05 BTC is representable, which means
+ * the engine's zero test cannot be exact: `0.1 + 0.2` is 0.30000000000000004, so
+ * selling 0.3 leaves 5.55e-17 behind. Untested, that residue is a live holding
+ * rendering as "0.00" units, and the mirror ordering warns about an over-sell on
+ * a ledger that balances exactly. Both are what `QTY_EPSILON` in `holdings.ts`
+ * exists for; neither is visible in a whole-share ledger, which is why this
+ * section is here rather than folded into the cases above.
+ */
+function checkFractionalQuantities() {
+  section("Portfolio engine — fractional quantities");
+
+  const assets: PricedAsset[] = [
+    asset({ id: "crypto:BTC", market: "crypto", kind: "crypto", price: 100000 }),
+  ];
+  const btc = (over: Partial<PortfolioTrade>) =>
+    trade({ assetId: "crypto:BTC", rate: 80000, ...over });
+
+  // Buy 0.1 then 0.2, sell all 0.3. Held qty is 0.30000000000000004 by then.
+  const closed = buildPortfolio(
+    [
+      btc({ tradeNo: "1", qty: 0.1 }),
+      btc({ tradeNo: "2", qty: 0.2 }),
+      btc({ tradeNo: "3", qty: 0.3, side: "SELL", rate: 90000 }),
+    ],
+    { assets, fx: FX, baseCurrency: "USD" },
+  );
+  eq("a fully-closed fractional position leaves no holding", closed.positions.length, 0);
+  eq("closing it raises no warning", closed.warnings.length, 0);
+  // 0.3 × (90,000 − 80,000). Booked in full even though the position is gone.
+  near("its realized P&L is still booked", closed.realized[0]?.baseAmount, 3000, 0.01);
+
+  // The same trades the other way round: one buy, two sells. After selling 0.1
+  // from 0.3 the remainder is 0.19999999999999998, just under the 0.2 sold next.
+  const reversed = buildPortfolio(
+    [
+      btc({ tradeNo: "1", qty: 0.3 }),
+      btc({ tradeNo: "2", qty: 0.1, side: "SELL", rate: 90000 }),
+      btc({ tradeNo: "3", qty: 0.2, side: "SELL", rate: 90000 }),
+    ],
+    { assets, fx: FX, baseCurrency: "USD" },
+  );
+  eq("selling a position off in fractions closes it", reversed.positions.length, 0);
+  eq("and is not reported as an over-sell", reversed.warnings.length, 0);
+
+  // The tolerance must not swallow a real position. 2e-8 BTC is dust to a human
+  // and two orders of magnitude above QTY_EPSILON.
+  const tiny = buildPortfolio([btc({ tradeNo: "1", qty: 0.00000002 })], {
+    assets,
+    fx: FX,
+    baseCurrency: "USD",
+  });
+  eq("a genuinely tiny holding survives", tiny.positions.length, 1);
+  eq("with its quantity intact", tiny.positions[0]?.qty, 0.00000002);
+
+  // And a real over-sell must still be caught.
+  const over = buildPortfolio(
+    [btc({ tradeNo: "1", qty: 0.5 }), btc({ tradeNo: "2", qty: 0.8, side: "SELL" })],
+    { assets, fx: FX, baseCurrency: "USD" },
+  );
+  eq("a genuine over-sell is still warned about", over.warnings.length, 1);
+  ok(
+    "and names the asset",
+    over.warnings[0]?.includes("crypto:BTC"),
+    over.warnings[0] ?? "no warning",
+  );
+}
+
 /* ------------------------------------------------------------------ run */
 
 function main() {
@@ -558,6 +631,7 @@ function main() {
   checkDegradedPortfolio();
   checkImpliedPsxCurrency();
   checkRealizedAndSells();
+  checkFractionalQuantities();
   checkEmptyAndUsdBase();
 
   if (failures > 0) {

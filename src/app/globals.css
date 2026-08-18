@@ -67,3 +67,21 @@ body {
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * A loading skeleton pulses; a reader who has asked the OS for less motion
+ * should get a still one rather than nothing at all, so the animation stops
+ * while the shape stays. Everything else here is a colour transition measured
+ * in milliseconds, but the sweep is broad on purpose — no animation in this app
+ * carries information that its stillness would lose.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

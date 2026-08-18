@@ -20,7 +20,8 @@
     "check:market": "tsx scripts/check-market.ts",
     "check:news": "tsx scripts/check-news.ts",
     "check:insights": "tsx scripts/check-insights.ts",
-    "check:portfolio": "tsx scripts/check-portfolio.ts"
+    "check:portfolio": "tsx scripts/check-portfolio.ts",
+    "check:search": "tsx scripts/check-search.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

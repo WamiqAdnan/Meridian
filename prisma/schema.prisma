@@ -13,6 +13,11 @@ model Transaction {
   owner          String   @default("Investor A") // which investor this trade belongs to (shared Finqalab account)
   broker         String   @default("finqalab") // profile slug the row was imported under
   security       String
+  /// Soft reference to Asset.id (e.g. "psx:LUCK", "crypto:BTC"). Deliberately NOT
+  /// a foreign key: the ledger is user-owned and must survive the market-data
+  /// catalogue being wiped and reseeded. Null on rows imported before markets
+  /// existed — `resolveAssetId` falls back to psx:{security}.
+  assetId        String?
   tradeNo        String // broker's trade number — unique per broker, not globally
   tradeDate      String // yyyy-mm-dd (sorts chronologically as text)
   settlementDate String
@@ -30,6 +35,7 @@ model Transaction {
   /// Scoped by broker so two brokers numbering from 1 can't collide.
   @@unique([broker, tradeNo])
   @@index([security])
+  @@index([assetId])
   @@index([tradeDate])
   @@index([owner])
 }
@@ -83,4 +89,95 @@ model BrokerFingerprint {
   createdAt DateTime      @default(now())
 
   @@index([profileId])
+}
+
+/**
+ * ---------------------------------------------------------------------------
+ * Market data — external, refetchable, and deliberately kept apart from the
+ * ledger above. Nothing here is user-owned: dropping every row costs one
+ * refresh. The ledger never stores a price; it joins to these at read time.
+ * -------------------------------------------------------------------------
+ */
+
+/// Anything with a price, in any market. One row per instrument we track.
+///
+/// `id` is `{market}:{symbol}` — readable in a URL and unique across markets, so
+/// PSX's LUCK and a hypothetical US LUCK can coexist. `source`/`sourceSymbol` are
+/// how a provider names it (Yahoo calls gold "GC=F"; CoinGecko calls bitcoin
+/// "bitcoin"), which keeps provider vocabulary out of the rest of the app.
+model Asset {
+  id           String  @id
+  market       String // see MARKETS in src/lib/markets.ts
+  symbol       String // display ticker: AAPL, BTC, USD/PKR
+  name         String
+  kind         String // stock | etf | reit | index | crypto | commodity | fx_pair | bond_yield
+  /// Currency the price is quoted in. A bond yield and an index quote "points".
+  currency     String
+  source       String // provider id: yahoo | coingecko | frankfurter | psx
+  sourceSymbol String
+  /// Lower sorts first on the market pages. Ties break alphabetically.
+  rank         Int     @default(100)
+  /// Part of the seeded market overview (vs. pulled in only because it's held).
+  benchmark    Boolean @default(false)
+  active       Boolean @default(true)
+
+  quote Quote?
+  bars  PriceBar[]
+
+  @@unique([market, symbol])
+  @@index([market])
+  @@index([source])
+}
+
+/// The latest snapshot for an asset — one row per asset, overwritten on refresh.
+/// Intraday truth. Historical truth lives in PriceBar.
+model Quote {
+  assetId       String    @id
+  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  price         Float
+  previousClose Float?
+  change        Float?
+  changePct     Float?
+  dayHigh       Float?
+  dayLow        Float?
+  volume        Float?
+  /// When the venue last traded it (not when we fetched it).
+  marketTime    DateTime?
+  source        String
+  fetchedAt     DateTime  @default(now())
+
+  @@index([fetchedAt])
+}
+
+/// One daily close per asset. The basis for every weekly/monthly/YTD number —
+/// without these, "what moved this week" is unanswerable.
+model PriceBar {
+  assetId String
+  /// yyyy-mm-dd, matching Transaction.tradeDate — sorts chronologically as text.
+  date    String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  open    Float?
+  high    Float?
+  low     Float?
+  close   Float
+  volume  Float?
+  source  String
+
+  @@id([assetId, date])
+  @@index([date])
+}
+
+/// Outcome of one market-data refresh, so a silently failing provider is visible
+/// rather than showing up as prices that quietly stop moving.
+model RefreshRun {
+  id          Int       @id @default(autoincrement())
+  source      String
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  assetsOk    Int       @default(0)
+  assetsFail  Int       @default(0)
+  barsWritten Int       @default(0)
+  error       String?
+
+  @@index([source, startedAt])
 }

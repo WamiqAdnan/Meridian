@@ -1,0 +1,159 @@
+/**
+ * What the market pages actually render.
+ *
+ * Assembles assets, quotes, daily bars and computed performance into one shape,
+ * so a page never has to know that performance comes from bars while the live
+ * price comes from a quote. Server-side only — it reads the database.
+ *
+ * The engines stay pure; this is the seam where they meet stored data.
+ */
+import { computePerformance, topMovers, type AssetPerformance, type Period } from "./performance";
+import { daysAgo, listAssetsWithQuotes, loadBars, type AssetWithQuote } from "./store";
+import { fxTableFromAssets, type FxTable } from "./currency";
+import { MARKET_META, isNotional, type Market } from "./types";
+
+/** An asset with everything a row or card needs. */
+export interface AssetView extends AssetWithQuote {
+  performance: AssetPerformance;
+  /** Closes for the sparkline, oldest-first. Trimmed to a drawable length. */
+  spark: number[];
+}
+
+export interface MarketView {
+  market: Market;
+  label: string;
+  blurb: string;
+  /** The asset that represents this market on the overview, if it has one. */
+  headline: AssetView | null;
+  assets: AssetView[];
+  /** Median move across the market's benchmark assets — a breadth read. */
+  medianChangePct: Record<Period, number | null>;
+  /** How many of the market's assets rose over the window. */
+  advancers: number;
+  decliners: number;
+}
+
+/** How much history to load. A year covers every window the UI offers. */
+const HISTORY_DAYS = 400;
+const SPARK_POINTS = 30;
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Load every tracked asset with its performance, plus the FX table.
+ *
+ * One pass over the database for all markets — cheaper than per-market queries
+ * and it is what makes cross-market movers possible.
+ */
+export async function loadAssetViews(options: { market?: Market } = {}): Promise<{
+  assets: AssetView[];
+  fx: FxTable;
+}> {
+  const rows = await listAssetsWithQuotes();
+  const bars = await loadBars(rows.map((a) => a.id), daysAgo(HISTORY_DAYS));
+
+  const assets: AssetView[] = rows.map((a) => {
+    const series = bars.get(a.id) ?? [];
+    return {
+      ...a,
+      performance: computePerformance(a.id, series),
+      spark: series.slice(-SPARK_POINTS).map((b) => b.close),
+    };
+  });
+
+  // The FX table is built from every asset regardless of the market filter —
+  // converting a PSX holding to USD needs the forex market loaded either way.
+  const fx = fxTableFromAssets(rows);
+  return {
+    assets: options.market ? assets.filter((a) => a.market === options.market) : assets,
+    fx,
+  };
+}
+
+/**
+ * Group loaded assets into per-market summaries, in display order.
+ *
+ * `all` is the unfiltered set, used only to resolve headline assets: US Stocks is
+ * headlined by the S&P 500, which lives in the `indices` market, so a lookup
+ * scoped to the market's own assets would never find it.
+ */
+export function buildMarketViews(
+  assets: AssetView[],
+  period: Period = "week",
+  all: AssetView[] = assets,
+): MarketView[] {
+  const byMarket = new Map<Market, AssetView[]>();
+  for (const a of assets) {
+    const bucket = byMarket.get(a.market);
+    if (bucket) bucket.push(a);
+    else byMarket.set(a.market, [a]);
+  }
+  const byId = new Map(all.map((a) => [a.id, a]));
+
+  const views: MarketView[] = [];
+  for (const [market, meta] of Object.entries(MARKET_META) as [Market, typeof MARKET_META[Market]][]) {
+    const marketAssets = byMarket.get(market);
+    if (!marketAssets || marketAssets.length === 0) continue;
+
+    // Breadth counts things that actually trade. Four PSX index levels all move
+    // together, so "0 up, 4 down" says nothing; the seventeen equities beneath
+    // them do. Markets that are entirely notional (indices, yields) fall back to
+    // their own members.
+    const tradable = marketAssets.filter((a) => !isNotional(a.kind));
+    const basis = tradable.length > 0 ? tradable : marketAssets;
+
+    const medians = {} as Record<Period, number | null>;
+    for (const p of ["day", "week", "month", "quarter", "ytd", "year"] as Period[]) {
+      medians[p] = median(
+        basis.map((a) => a.performance.periods[p]?.changePct).filter((v): v is number => v != null),
+      );
+    }
+
+    const moves = basis
+      .map((a) => a.performance.periods[period]?.changePct)
+      .filter((v): v is number => v != null);
+
+    views.push({
+      market,
+      label: meta.label,
+      blurb: meta.blurb,
+      headline: meta.headline ? (byId.get(meta.headline) ?? null) : null,
+      assets: marketAssets,
+      medianChangePct: medians,
+      advancers: moves.filter((m) => m > 0).length,
+      decliners: moves.filter((m) => m < 0).length,
+    });
+  }
+
+  return views;
+}
+
+/**
+ * The market's own move over a window.
+ *
+ * Prefers the headline asset (the S&P for stocks, BTC for crypto) and falls back
+ * to the median across the market, which is the honest answer for a market like
+ * commodities where no single asset represents the whole.
+ */
+export function marketChange(view: MarketView, period: Period): number | null {
+  return view.headline?.performance.periods[period]?.changePct ?? view.medianChangePct[period];
+}
+
+/** Cross-market gainers and losers over one window. */
+export function crossMarketMovers(assets: AssetView[], period: Period, limit = 6) {
+  return topMovers(assets, (a) => a.performance, period, limit);
+}
+
+/** The freshest quote timestamp across a set of assets. */
+export function newestFetch(assets: AssetView[]): Date | null {
+  let newest: Date | null = null;
+  for (const a of assets) {
+    if (a.fetchedAt && (!newest || a.fetchedAt > newest)) newest = a.fetchedAt;
+  }
+  return newest;
+}

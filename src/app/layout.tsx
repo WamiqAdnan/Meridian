@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import AppNav from "@/components/AppNav";
+import { BRAND } from "@/lib/brand";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PSX Portfolio",
-  description: "Finqalab holdings tracker with live PSX prices",
+  title: { default: BRAND.name, template: `%s · ${BRAND.name}` },
+  description: BRAND.description,
 };
 
 export default function RootLayout({
@@ -27,7 +29,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <AppNav />
+        <main className="flex-1">{children}</main>
+      </body>
     </html>
   );
 }

@@ -12,7 +12,10 @@
     "db:studio": "prisma studio",
     "check:parse": "tsx scripts/check-parse.ts",
     "try:learn": "tsx scripts/try-learn.ts",
-    "check:replicator": "tsx scripts/check-replicator.ts"
+    "check:replicator": "tsx scripts/check-replicator.ts",
+    "market:refresh": "tsx scripts/refresh-market.ts",
+    "market:backfill": "tsx scripts/refresh-market.ts --history",
+    "check:market": "tsx scripts/check-market.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

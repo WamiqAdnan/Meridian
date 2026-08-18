@@ -3,15 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/brand";
+import AssetSearch from "@/components/search/AssetSearch";
 
 /**
  * The primary navigation, shared by every page.
  *
- * `Insights` joins once the page behind it exists — a nav link to a 404 is worse
- * than a shorter nav.
+ * `/` is the Overview — the portfolio, the markets and the week's insights in one
+ * screen. It was the holdings-and-import page until the asset pages arrived and
+ * gave every number on it somewhere to lead.
+ *
+ * Search is not in this list on purpose: it has no page of its own to be "on", it
+ * is a box you type into from wherever you are. `/search` exists as its result
+ * page and as the no-JavaScript path, not as a destination in the nav.
  */
 const LINKS = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Overview" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/markets", label: "Markets" },
   { href: "/news", label: "News" },
@@ -52,6 +58,8 @@ export default function AppNav() {
             );
           })}
         </nav>
+
+        <AssetSearch />
       </div>
     </header>
   );

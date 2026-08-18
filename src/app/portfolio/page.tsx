@@ -16,8 +16,12 @@ import {
   fmtWeight,
   pnlColor,
 } from "@/lib/format";
+import { listKnownParsers } from "@/lib/broker-profiles";
+import { aiBackendLabel } from "@/lib/ai";
+import { assetHref } from "@/lib/routes";
 import AllocationDonut from "@/components/AllocationDonut";
 import InvestorSwitcher from "@/components/InvestorSwitcher";
+import UploadCard from "@/components/UploadCard";
 import BaseCurrencyTabs from "@/components/BaseCurrencyTabs";
 import AddTradeForm, { type AssetOption } from "@/components/AddTradeForm";
 import RefreshMarketsButton from "@/components/markets/RefreshMarketsButton";
@@ -56,13 +60,14 @@ export default async function PortfolioPage({
 
   await refreshIfStale();
 
-  const [portfolio, assetRows] = await Promise.all([
+  const [portfolio, assetRows, parsers] = await Promise.all([
     loadPortfolio({ owner, baseCurrency: base }),
     prisma.asset.findMany({
       where: { active: true },
       orderBy: [{ market: "asc" }, { symbol: "asc" }],
       select: { id: true, market: true, symbol: true, name: true, currency: true },
     }),
+    listKnownParsers(),
   ]);
 
   const { positions, totals, byMarket, byAsset, best, worst, warnings, pricesFetchedAt } = portfolio;
@@ -148,15 +153,12 @@ export default async function PortfolioPage({
           <div className="rounded-xl border border-dashed border-line p-10 text-center lg:col-span-2">
             <p className="text-sm font-medium">No positions yet.</p>
             <p className="mt-1 text-sm text-muted">
-              Record a trade on the right, or{" "}
-              <Link href="/" className="text-accent underline-offset-2 hover:underline">
-                upload a broker statement
-              </Link>
-              .
+              Record a trade on the right, or drop in a broker statement below it.
             </p>
           </div>
-          <aside>
+          <aside className="space-y-6">
             <AddTradeForm assets={assetOptions} defaultOwner={owner ?? INVESTORS[0]} />
+            <ImportPanel owner={owner} parsers={parsers} />
           </aside>
         </div>
       ) : (
@@ -191,7 +193,7 @@ export default async function PortfolioPage({
                     {positions.map((p) => (
                       <tr key={p.assetId} className="hover:bg-surface-raised/60">
                         <td className="px-3 py-2">
-                          <Link href={`/markets/${p.market}`} className="font-semibold hover:text-accent">
+                          <Link href={assetHref(p.assetId)} className="font-semibold hover:text-accent">
                             {p.symbol}
                           </Link>
                           <div className="text-xs text-muted">{p.marketLabel}</div>
@@ -260,6 +262,8 @@ export default async function PortfolioPage({
             <aside className="space-y-6">
               <AddTradeForm assets={assetOptions} defaultOwner={owner ?? INVESTORS[0]} />
 
+              <ImportPanel owner={owner} parsers={parsers} />
+
               {byAsset.length > 0 && (
                 <div>
                   <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
@@ -273,6 +277,42 @@ export default async function PortfolioPage({
             </aside>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Statement import.
+ *
+ * Lives here rather than on the overview because it is a *task*, not a status:
+ * getting trades into the ledger belongs next to the other way of doing that, the
+ * manual trade form above it. The overview summarises what is already in.
+ */
+function ImportPanel({
+  owner,
+  parsers,
+}: {
+  owner: string | null;
+  parsers: Awaited<ReturnType<typeof listKnownParsers>>;
+}) {
+  return (
+    <div>
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Import</h2>
+      <UploadCard defaultOwner={owner ?? INVESTORS[0]} learningBackend={aiBackendLabel()} />
+      {parsers.length > 0 && (
+        <p className="mt-2 text-xs text-muted">
+          <span className="font-medium">Brokers we can read:</span>{" "}
+          {parsers.map((p, i) => (
+            <span key={p.slug}>
+              {i > 0 && " · "}
+              <span title={p.source === "builtin" ? "Built in" : "Learned from an upload"}>
+                {p.broker}
+                {p.source === "llm" && <span className="text-muted"> (learned)</span>}
+              </span>
+            </span>
+          ))}
+        </p>
       )}
     </div>
   );

@@ -11,6 +11,20 @@ hosted backend, no market-data subscription required.
 
 ## What it does today
 
+**Overview** — the portfolio, every market, the biggest cross-market movers and the
+week's AI summary on one screen, per investor or combined. It reads; it never
+generates.
+
+**Search** — find anything tracked from anywhere in the app, by ticker, name,
+market, or the word a headline would actually use: `bullion` finds Gold, `the Dow`
+finds the Dow Jones, `greenback` finds the dollar index. Every hit says which of
+those it matched on. Works with JavaScript off.
+
+**Asset pages** — one page per asset, whatever market it is in: a labelled price
+chart over any window, every window's change with the sessions it was measured
+between, the position held, and the headlines matched to that asset. Every symbol
+in the app links here.
+
 **Portfolio** — holdings derived by replaying a trade ledger (weighted-average
 cost including fees, realized P&L booked on sells), across every market at once
 and totalled in one currency. Allocation by market and by asset, best and worst
@@ -170,13 +184,13 @@ Everything is optional except `DATABASE_URL`.
 | `AI_API_KEY` | Bearer token, if the endpoint needs one |
 | `AI_TIMEOUT_MS` | Cap on one attempt (default 600000 — local reasoning models are slow) |
 | `AI_REASONING_EFFORT` | Set `none` to trade answer quality for speed |
+| `COINGECKO_API_KEY` | Raises the crypto rate limit. Without it the keyless tier is used |
+| `COINGECKO_PLAN` | `pro` to use the pro host; otherwise the demo key path is used |
 
 One backend serves both model-backed features: learning a parser for an unknown
 broker, and writing the weekly insights. The `LEARNING_*` spelling of each `AI_*`
 variable above is still read, so an existing `.env` keeps working; `AI_*` wins
 where both are set.
-| `COINGECKO_API_KEY` | Raises the crypto rate limit. Without it the keyless tier is used |
-| `COINGECKO_PLAN` | `pro` to use the pro host; otherwise the demo key path is used |
 
 Nothing in the browser ever sees a key — every provider call is server-side.
 
@@ -257,6 +271,7 @@ src/lib/markets/
   providers/      yahoo · coingecko · psx · frankfurter · shared helpers
   registry.ts     routing and fallback between providers
   performance.ts  pure: period changes, movers, unusual-move detection
+  chart.ts        pure: which bars a chart draws, and where its gridlines go
   currency.ts     pure: FX table and conversion, pivoted through USD
   store.ts        the only place market data touches Prisma
   refresh.ts      the refresh job, with a RefreshRun audit row
@@ -279,6 +294,12 @@ src/lib/ai/
   json.ts         pure: getting JSON out of an answer wrapped in prose or a fence
   task.ts         the ask-validate-repair loop every model call in the app shares
 
+src/lib/search/
+  rank.ts         pure: scores a phrase against every tracked asset, and says which
+                  field matched — reuses news/terms.ts so one synonym list serves both
+  store.ts        the only place search touches Prisma
+  view.ts         pure: the flat row the API, the typeahead and /search all share
+
 src/lib/insights/
   types.ts        vocabulary: facts, inferences, verdicts, the stored record
   evidence.ts     pure: assembles the numbered brief, and renders it for the model
@@ -289,6 +310,7 @@ src/lib/insights/
   view.ts         what the pages show (read-only; never generates)
 
 src/lib/
+  routes.ts         pure: one definition per destination, so every link agrees
   holdings.ts       pure: replays the ledger into positions (asset-class agnostic)
   ledger.ts         pure: asset resolution + manual-trade validation
   portfolio.ts      pure: positions, allocation, windowed P&L, multi-currency totals
@@ -322,6 +344,22 @@ that merely contains a hand-written synonym for it cannot, however apt it reads.
 That is what `NewsMatch.via` is carried through the whole pipeline for, and the
 validator rejects a high-confidence claim resting on a text match alone.
 
+**A search hit says which field it matched.** A query for `bullion` returning Gold
+reads as a bug until the row admits it matched a hand-written synonym, so every hit
+carries the field and the text that matched it — the same instinct as showing
+`NewsMatch.via` next to a headline. The scoring tiers are an evenly spaced ladder
+rather than hand-tuned numbers, and the gap between rungs is wider than the
+held-position bonus, so owning an asset can decide a tie but can never promote a
+substring match above a ticker match. `check:search` asserts the spacing, not the
+values; the first version of the table failed that check.
+
+**A chart and the number above it measure the same window.** The line is drawn from
+the *reference* session a period change is computed from, not from the first session
+inside the window. On a market that does not trade every day those are different
+bars: FFC's 1M read "+0.18%" beside a line that visibly fell, because the line began
+after the close it was being measured against. Both came from
+`markets/performance.ts`; only one of them was anchored properly.
+
 **Two currencies are on screen at once, on purpose.** A position is priced and
 costed in its own currency — rounding a US holding into rupees to display it
 would misstate what you own — while every *total* is converted, because a sum
@@ -332,20 +370,21 @@ named in a warning rather than dropped from the total.
 
 ## Testing
 
-No test runner. Six standalone check scripts, each deterministic and each
-runnable on its own:
+No test runner. Seven standalone check scripts, each deterministic and each
+runnable on its own — 1,270 checks in total:
 
 ```bash
 npm run check:parse       # statement parser: spec engine, validator, learning loop
 npm run check:replicator  # index replicator: fees, allocation, edge cases
-npm run check:market      # markets: performance, movers, currency, providers, registry
+npm run check:market      # markets: performance, movers, currency, chart maths, providers
 npm run check:news        # news: RSS parsing, terms, relevance, providers, registry
 npm run check:portfolio   # portfolio: asset resolution, manual entry, the engine
 npm run check:insights    # AI layer + insights: weeks, evidence, prompt, validator
+npm run check:search      # search: scoring tiers, aliases, multi-word, total ordering
 ```
 
-`check:market`, `check:news`, `check:portfolio` and `check:insights` run with no
-network and no database — payload parsing is exercised against captured payloads in
+`check:market`, `check:news`, `check:portfolio`, `check:insights` and
+`check:search` run with no network and no database — payload parsing is exercised against captured payloads in
 `data/reference/market/` and `data/reference/news/`, and both registries are
 driven with stub providers to prove routing, merging and containment of a
 provider that throws. `check:news` passes every date in explicitly, so it gives

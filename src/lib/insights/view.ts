@@ -13,9 +13,9 @@
  * Server-side only; it reads the database.
  */
 import { aiBackendLabel } from "@/lib/ai";
-import type { Market } from "@/lib/markets/types";
-import { latestInsight } from "./store";
-import { weekStartOf, type StoredInsight } from "./types";
+import { MARKETS, MARKET_META, type Market } from "@/lib/markets/types";
+import { latestInsight, latestInsights } from "./store";
+import { accountedFor, weekStartOf, type InsightStatus, type StoredInsight } from "./types";
 
 export interface InsightPanel {
   /** The newest insight for this market, or null if it has never had one. */
@@ -40,4 +40,73 @@ export async function loadInsightPanel(
     stale: insight != null && insight.weekStart !== weekStart,
     backend: aiBackendLabel(),
   };
+}
+
+/* ------------------------------------------------------------------ digest */
+
+/** One market's insight, reduced to what an overview row shows. */
+export interface InsightDigestEntry {
+  market: Market;
+  label: string;
+  weekStart: string;
+  stale: boolean;
+  headline: string;
+  summary: string;
+  status: InsightStatus;
+  /** How many unusual moves the headlines accounted for, out of how many there were. */
+  explained: number;
+  total: number;
+  articlesConsidered: number;
+  generatedAt: Date;
+  model: string;
+}
+
+export interface InsightDigest {
+  entries: InsightDigestEntry[];
+  /** The week the app would generate for now. */
+  weekStart: string;
+  /** Markets that have never had an insight at all. */
+  missing: Market[];
+  backend: string | null;
+}
+
+/**
+ * Every market's newest insight, in market display order.
+ *
+ * One query for all eight — `latestInsights()` — which is why this is cheap enough
+ * for the overview to call on every render. It is still read-only: an overview
+ * that generated an insight it found missing would spend up to twenty-four model
+ * calls on a page view, which is the trap `insights/view.ts` exists to avoid.
+ */
+export async function loadInsightDigest(now: Date = new Date()): Promise<InsightDigest> {
+  const weekStart = weekStartOf(now);
+  const stored = await latestInsights();
+  const byMarket = new Map(stored.map((i) => [i.market, i]));
+
+  const entries: InsightDigestEntry[] = [];
+  const missing: Market[] = [];
+  for (const market of MARKETS) {
+    const insight = byMarket.get(market);
+    if (!insight) {
+      missing.push(market);
+      continue;
+    }
+    const { explained, total } = accountedFor(insight);
+    entries.push({
+      market,
+      label: MARKET_META[market].label,
+      weekStart: insight.weekStart,
+      stale: insight.weekStart !== weekStart,
+      headline: insight.body.headline,
+      summary: insight.body.summary,
+      status: insight.status,
+      explained,
+      total,
+      articlesConsidered: insight.body.articlesConsidered,
+      generatedAt: insight.generatedAt,
+      model: insight.model,
+    });
+  }
+
+  return { entries, weekStart, missing, backend: aiBackendLabel() };
 }

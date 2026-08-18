@@ -77,9 +77,12 @@ export async function generateMetadata({
   const detail = id ? await loadAssetDetail(id).catch(() => null) : null;
   if (!detail) return { title: "Asset" };
   const { asset } = detail;
+  // A ledger-derived asset has no name but its own ticker, so "FFC · FFC" in a
+  // browser tab reads as a bug. Same guard the heading below uses.
+  const named = asset.name !== asset.symbol;
   return {
-    title: `${asset.symbol} · ${asset.name}`,
-    description: `${asset.name} (${asset.symbol}) in ${MARKET_META[asset.market].label}: price, performance, the position held, and the headlines matched to it.`,
+    title: named ? `${asset.symbol} · ${asset.name}` : asset.symbol,
+    description: `${named ? `${asset.name} (${asset.symbol})` : asset.symbol} in ${MARKET_META[asset.market].label}: price, performance, the position held, and the headlines matched to it.`,
   };
 }
 

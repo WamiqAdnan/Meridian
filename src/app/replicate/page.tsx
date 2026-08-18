@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { loadPortfolio } from "@/lib/portfolio-view";
 import { DEFAULT_INDEX, getIndexConstituents, type IndexSnapshot } from "@/lib/psx-index";
@@ -5,6 +6,12 @@ import ReplicatorPanel from "@/components/ReplicatorPanel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Index Replicator",
+  description:
+    "Turn an index and a rupee amount into a whole-share buy list that matches its weights, fees included.",
+};
 
 /**
  * Build a weight-matched, whole-share buy plan from a live index.
@@ -44,7 +51,7 @@ export default async function ReplicatePage() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Index Replicator</h1>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-muted">
             Pick an index and how many of its top names to hold, name an amount — get the
             whole-share buy list that matches those weights, fees included.
           </p>
@@ -65,7 +72,7 @@ export default async function ReplicatePage() {
       />
 
       {pricesFetchedAt && (
-        <p className="mt-6 text-xs text-neutral-500">
+        <p className="mt-6 text-xs text-muted">
           Fallback prices for rows marked * come from the dashboard cache, last updated{" "}
           {new Date(pricesFetchedAt as Date).toLocaleString("en-PK", {
             dateStyle: "medium",

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppNav from "@/components/AppNav";
@@ -17,6 +17,22 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: { default: BRAND.name, template: `%s · ${BRAND.name}` },
   description: BRAND.description,
+};
+
+/**
+ * The browser chrome follows the theme.
+ *
+ * Both values are the `--background` token from `globals.css`, written out
+ * because a `theme-color` meta tag is read by the browser before any stylesheet
+ * has been parsed and so cannot reference a custom property. If those tokens
+ * change, change these too — a light chrome above a near-black page is worse than
+ * no `theme-color` at all.
+ */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#08090b" },
+  ],
 };
 
 export default function RootLayout({

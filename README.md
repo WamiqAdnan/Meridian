@@ -31,6 +31,12 @@ free thereafter. The model never sees the ledger and never parses trades itself.
 indices, bonds, real estate, PSX) with daily/weekly/monthly/YTD performance,
 cross-market gainers and losers, and per-market detail pages.
 
+**News** — headlines from several keyless feeds, matched to the assets they
+actually concern and scored by how they were matched. Which assets get their own
+lookup is decided by how unusual their latest session was *against their own
+volatility*, not by a fixed percentage — so a 0.02% day on a pegged currency can
+qualify while a 4% day in crypto does not.
+
 **Index replicator** — turn a cash amount and a chosen index into a whole-share
 buy list matching the published weights, with real broker fees modelled.
 
@@ -83,6 +89,24 @@ schedule, since a daily close only changes once a day.
 ```bash
 npm run market:backfill -- --market=crypto --range=1y
 npm run market:refresh -- --missing
+```
+
+### Keeping news current
+
+```bash
+npm run news:refresh
+```
+
+Sweeps every market's feeds and adds a per-asset lookup for anything that moved
+unusually. A handful of requests and a couple of seconds, so it suits the same
+few-minute cadence as the quote refresh. Run `market:backfill` first — with no
+daily bars there is nothing to call unusual, and the run degrades to the market
+sweep alone.
+
+```bash
+npm run news:refresh -- --market=commodities --days=14
+npm run news:refresh -- --assets=psx:LUCK,crypto:BTC --no-markets
+npm run news:refresh -- --prune=60      # drop anything older than 60 days
 ```
 
 ---
@@ -140,6 +164,31 @@ supports the asset (`src/lib/markets/registry.ts`).
 Two providers were evaluated and rejected: **Alpha Vantage** (free tier is now 25
 requests/day) and **Stooq** (now behind a JavaScript proof-of-work challenge).
 
+### News sources
+
+All keyless RSS, behind a `NewsProvider` interface that mirrors
+`MarketDataProvider` (`src/lib/news/registry.ts`).
+
+| Source | Answers | Curated | Notes |
+|---|---|---|---|
+| **Yahoo Finance** (`feeds.finance.yahoo.com`) | one instrument | **yes** | Stories filed against a symbol by the publisher. Covers equities, ETFs, crypto, futures, indices and bond ETFs — verified. **Not FX pairs**: `PKR=X` answers 200 with an empty channel |
+| **Google News** (`/rss/search`) | anything | no | Any phrase becomes a feed, so it is the only source that reaches a PSX equity or a currency pair. Names the publisher in a `<source url>` element. Links are its own redirects, not publisher URLs |
+| **CNBC** (`/id/{desk}/…`) | one market | no | Seven desk feeds, each id verified against its channel title. No search endpoint, and no PSX coverage — that market routes to Google alone |
+
+**News unions its providers; market data falls back between them.** A price has
+one right answer, so a second opinion is waste. Coverage does not — two desks on
+the same move is the reason to have two desks — so every supporting provider is
+asked and the results are merged, deduplicated on canonical URL.
+
+**Only a curated provider's asset feed counts as provenance.** Yahoo files a
+story against a symbol; Google, handed the same question, runs a text search and
+will return crypto-converter spam for "UAE Dirham". Both were treated as
+provenance in a first draft, which attached that spam to USD/AED at full
+confidence. A search provider's results are now matched on their text like any
+other article.
+
+GDELT was evaluated and rejected: it timed out on every attempt.
+
 ---
 
 ## Architecture
@@ -155,6 +204,17 @@ src/lib/markets/
   store.ts        the only place market data touches Prisma
   refresh.ts      the refresh job, with a RefreshRun audit row
   view.ts         assembles what the pages render
+
+src/lib/news/
+  types.ts        vocabulary: NewsArticle, NewsQuery, the provider interface
+  rss.ts          pure: entities, CDATA, items, dates, canonical URLs
+  terms.ts        data: what to call an asset, and what to recognise it by
+  relevance.ts    pure: article-to-asset matching, and the unusual-move trigger
+  providers/      yahoo · google · cnbc · shared helpers
+  registry.ts     routing, union and merge across providers
+  store.ts        the only place news touches Prisma
+  ingest.ts       the ingest job, with a NewsRun audit row
+  view.ts         day-grouping for the pages
 
 src/lib/
   holdings.ts       pure: replays the ledger into positions (asset-class agnostic)
@@ -194,13 +254,16 @@ runnable on its own:
 npm run check:parse       # statement parser: spec engine, validator, learning schema
 npm run check:replicator  # index replicator: fees, allocation, edge cases
 npm run check:market      # markets: performance, movers, currency, providers, registry
+npm run check:news        # news: RSS parsing, terms, relevance, providers, registry
 npm run check:portfolio   # portfolio: asset resolution, manual entry, the engine
 ```
 
-`check:market` and `check:portfolio` run with no network and no database — provider parsing is
-exercised against captured payloads in `data/reference/market/`, and the registry
-is driven with stub providers to prove routing, fallback and containment of a
-provider that throws.
+`check:market`, `check:news` and `check:portfolio` run with no network and no
+database — payload parsing is exercised against captured payloads in
+`data/reference/market/` and `data/reference/news/`, and both registries are
+driven with stub providers to prove routing, merging and containment of a
+provider that throws. `check:news` passes every date in explicitly, so it gives
+the same answer next year as it does today.
 
 ---
 

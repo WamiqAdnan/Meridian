@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rss version="2.0">
+    <channel>
+        <copyright>Copyright (c) 2026 Yahoo Inc. All rights reserved.</copyright>
+        <description>Latest Financial News for AAPL</description>
+        <image>
+            <height>45</height>
+            <link>http://finance.yahoo.com/q/h?s=AAPL</link>
+            <title>Yahoo! Finance: AAPL News</title>
+            <url>https://s.yimg.com/rz/stage/p/yahoo_finance_en-US_h_p_finance_2.png</url>
+            <width>144</width>
+        </image>
+        <item>
+            <description>US Secretary of Commerce Howard Lutnick says the Trump administration does not want Apple (AAPL) to purchase memory chips from China. Yahoo Finance Technology Editor Dan Howley explains why this presents issues for Apple.</description>
+            <guid isPermaLink="false">947ed9d9-6b6f-45e9-ae72-87e9fe6dc904</guid>
+            <link>https://finance.yahoo.com/video/trump-admin-urges-apple-not-203543932.html?.tsrc=rss</link>
+            <pubDate>Mon, 17 Aug 2026 20:35:43 +0000</pubDate>
+            <title>Trump admin. urges Apple not to purchase Chinese memory chips, but this presents a problem</title>
+        </item>
+<item>
+            <description>Apple's net income margin sits at 27%, while CoreWeave operates at -24%, a stark profitability divergence that complicates any direct comparison.</description>
+            <guid isPermaLink="false">7de6037e-54d5-3e55-8d06-39417c6364f8</guid>
+            <link>https://www.fool.com/coverage/charts/2026/08/17/apple-vs-coreweave-comparing-revenue-trends-between-a-stable-tech-giant-and-a-rapidly-growing-ai-neocloud/?.tsrc=rss</link>
+            <pubDate>Tue, 18 Aug 2026 03:55:17 +0000</pubDate>
+            <title>Apple vs. CoreWeave: Comparing Revenue Trends Between a Stable Tech Giant and a Rapidly Growing AI Neocloud</title>
+        </item>
+<item>
+            <description>Coherent is the best-performing stock in the S&amp;P 500 on Monday. Sandisk, Micron, Marvell, and other AI stocks also rise.</description>
+            <guid isPermaLink="false">e16a2ee6-9fad-362d-ac29-c796aa9fd1b0</guid>
+            <link>https://finance.yahoo.com/m/e16a2ee6-9fad-362d-ac29-c796aa9fd1b0/sandisk%2C-micron%2C-coherent%2C.html?.tsrc=rss</link>
+            <pubDate>Mon, 17 Aug 2026 20:52:00 +0000</pubDate>
+            <title>Sandisk, Micron, Coherent, Boeing, Apple, Amazon, and More Stocks That Explain Today’s Market</title>
+        </item>
+<item>
+            <description>The move could help Meta and other advertisers.</description>
+            <guid isPermaLink="false">20bf077e-a8b3-3062-8473-81df740dc128</guid>
+            <link>https://finance.yahoo.com/technology/articles/apple-changes-app-tracking-rules-201438480.html?.tsrc=rss</link>
+            <pubDate>Mon, 17 Aug 2026 20:14:38 +0000</pubDate>
+            <title>Apple Changes App Tracking Rules in Europe</title>
+        </item>
+        <language>en-US</language>
+        <lastBuildDate>Tue, 18 Aug 2026 05:31:15 +0000</lastBuildDate>
+        <link>http://finance.yahoo.com/q/h?s=AAPL</link>
+        <title>Yahoo! Finance: AAPL News</title>
+    </channel>
+</rss>

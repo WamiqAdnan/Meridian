@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/markets", label: "Markets" },
+  { href: "/news", label: "News" },
   { href: "/transactions", label: "Transactions" },
   { href: "/replicate", label: "Replicate" },
 ];

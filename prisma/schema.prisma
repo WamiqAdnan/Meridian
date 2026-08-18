@@ -116,6 +116,7 @@ model Asset {
 
   quote Quote?
   bars  PriceBar[]
+  news  NewsMatch[]
 
   @@unique([market, symbol])
   @@index([market])
@@ -173,4 +174,76 @@ model RefreshRun {
   error       String?
 
   @@index([source, startedAt])
+}
+
+/**
+ * ---------------------------------------------------------------------------
+ * News — external and disposable, like market data above. Dropping every row
+ * costs one ingest. Nothing here is user-owned and nothing here is a price.
+ * -------------------------------------------------------------------------
+ */
+
+/// One headline, from any feed, after the provider has been normalised away.
+///
+/// `id` is a hash of the canonical URL rather than a provider's own guid: the
+/// same story arrives from Yahoo and from Google News under two different guids,
+/// and deduping on the URL is what stops it being counted twice.
+model NewsArticle {
+  id          String   @id
+  title       String
+  /// Canonical — tracking parameters stripped. The identity of the article.
+  url         String   @unique
+  /// Who published it ("Reuters"). Distinct from `provider`, which is who fetched it.
+  source      String
+  provider    String // yahoo | google | cnbc
+  summary     String?
+  publishedAt DateTime
+  fetchedAt   DateTime @default(now())
+  /// The market whose feed produced it. Null for a general story — not a gap: a
+  /// Fed decision belongs to every market, and pinning it to one would be a guess.
+  market      String?
+
+  matches NewsMatch[]
+
+  @@index([publishedAt])
+  @@index([market, publishedAt])
+}
+
+/// An article's link to an asset, with how confident that link is and why.
+///
+/// A real foreign key, unlike `Transaction.assetId`: both sides are disposable
+/// market data, so cascading a match away with its asset is correct. The article
+/// itself survives — re-matching is free, re-fetching is not.
+model NewsMatch {
+  articleId String
+  assetId   String
+  article   NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  asset     Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  /// 0–1. See BASE in src/lib/news/relevance.ts.
+  score     Float
+  /// feed | symbol | name | alias — provenance beats text, and the difference is
+  /// recorded rather than flattened, so an insight can say what it actually read.
+  via       String
+
+  @@id([articleId, assetId])
+  @@index([assetId])
+  @@index([score])
+}
+
+/// Outcome of one news ingest, so a feed that quietly goes dark is visible.
+/// Without this, "no news today" and "the feed 404s now" look identical.
+model NewsRun {
+  id           Int       @id @default(autoincrement())
+  /// What was asked for: "all", or a market id.
+  scope        String
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  queriesRun   Int       @default(0)
+  queriesFail  Int       @default(0)
+  articlesSeen Int       @default(0)
+  articlesNew  Int       @default(0)
+  matchesMade  Int       @default(0)
+  error        String?
+
+  @@index([scope, startedAt])
 }

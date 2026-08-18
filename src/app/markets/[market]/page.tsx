@@ -11,6 +11,9 @@ import Change from "@/components/markets/Change";
 import MoversList from "@/components/markets/MoversList";
 import PeriodTabs from "@/components/markets/PeriodTabs";
 import RefreshMarketsButton from "@/components/markets/RefreshMarketsButton";
+import NewsList from "@/components/news/NewsList";
+import { ingestIfStale } from "@/lib/news/ingest";
+import { loadNewsFeed } from "@/lib/news/view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +50,9 @@ export default async function MarketPage({
   const period = toPeriod((await searchParams).period);
 
   await refreshIfStale({ market: market as Market });
+  // News is fetched on its own cadence and swallows its own failures, so a dead
+  // feed costs this page nothing.
+  await ingestIfStale({ market: market as Market });
 
   // Load everything, then narrow: this market's headline may live elsewhere
   // (US Stocks is headlined by the S&P, which sits in `indices`).
@@ -56,6 +62,7 @@ export default async function MarketPage({
   const meta = MARKET_META[market];
   const movers = topMovers(assets, (a) => a.performance, period, 5);
   const updated = newestFetch(assets);
+  const news = await loadNewsFeed({ market: market as Market, limit: 8 });
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
@@ -111,6 +118,23 @@ export default async function MarketPage({
             <MoversList title={`Top gainers · ${PERIOD_LABEL[period]}`} movers={movers.gainers} />
             <MoversList title={`Top losers · ${PERIOD_LABEL[period]}`} movers={movers.losers} />
           </div>
+        </section>
+      )}
+
+      {news.length > 0 && (
+        <section aria-labelledby="market-news" className="mb-8">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2
+              id="market-news"
+              className="text-sm font-semibold uppercase tracking-wide text-muted"
+            >
+              In the news
+            </h2>
+            <Link href={`/news?market=${market}`} className="text-xs text-muted hover:text-foreground">
+              All {meta.label.toLowerCase()} news →
+            </Link>
+          </div>
+          <NewsList items={news} />
         </section>
       )}
 

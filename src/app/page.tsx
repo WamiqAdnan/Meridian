@@ -8,6 +8,8 @@ import RefreshPricesButton from "@/components/RefreshPricesButton";
 import AllocationDonut from "@/components/AllocationDonut";
 import InvestorSwitcher from "@/components/InvestorSwitcher";
 import { INVESTORS, toOwnerFilter } from "@/lib/investors";
+import { listKnownParsers } from "@/lib/broker-profiles";
+import { learningBackendLabel } from "@/lib/broker-learn";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +27,7 @@ export default async function DashboardPage({
 
   const { holdings, totals, realizedBySecurity, warnings, pricesFetchedAt, pricedCount } =
     await getPortfolio(owner);
+  const parsers = await listKnownParsers();
 
   const hasHoldings = holdings.length > 0;
   const realizedEntries = Object.entries(realizedBySecurity);
@@ -38,7 +41,7 @@ export default async function DashboardPage({
             PSX Portfolio <span className="text-neutral-400">· {viewLabel}</span>
           </h1>
           <p className="text-sm text-neutral-500">
-            Finqalab holdings · live prices from PSX ·{" "}
+            Holdings from your broker statements · live prices from PSX ·{" "}
             <span title="Time of the most recent cached price">updated {fmtTime(pricesFetchedAt)}</span>
           </p>
         </div>
@@ -161,7 +164,21 @@ export default async function DashboardPage({
         <aside className="space-y-6">
           <div>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Import</h2>
-            <UploadCard defaultOwner={owner ?? INVESTORS[0]} />
+            <UploadCard defaultOwner={owner ?? INVESTORS[0]} learningBackend={learningBackendLabel()} />
+            {parsers.length > 0 && (
+              <p className="mt-2 text-xs text-neutral-500">
+                <span className="font-medium">Brokers we can read:</span>{" "}
+                {parsers.map((p, i) => (
+                  <span key={p.slug}>
+                    {i > 0 && " · "}
+                    <span title={p.source === "builtin" ? "Built in" : "Learned from an upload"}>
+                      {p.broker}
+                      {p.source === "llm" && <span className="text-neutral-400"> (learned)</span>}
+                    </span>
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
           {hasHoldings && (
             <div>

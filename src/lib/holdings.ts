@@ -1,4 +1,4 @@
-import type { Side } from "./finqalab-parser";
+import type { Side } from "./broker-spec";
 
 /** Minimal shape the engine needs — satisfied by both ParsedTrade and DB rows. */
 export interface LedgerTrade {

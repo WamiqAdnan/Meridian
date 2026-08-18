@@ -11,8 +11,9 @@ datasource db {
 model Transaction {
   id             Int      @id @default(autoincrement())
   owner          String   @default("Investor A") // which investor this trade belongs to (shared Finqalab account)
+  broker         String   @default("finqalab") // profile slug the row was imported under
   security       String
-  tradeNo        String   @unique // dedup key: re-importing the same/overlapping report never double-counts
+  tradeNo        String // broker's trade number — unique per broker, not globally
   tradeDate      String // yyyy-mm-dd (sorts chronologically as text)
   settlementDate String
   side           String // BUY | SELL
@@ -25,6 +26,9 @@ model Transaction {
   sourceFile     String?
   importedAt     DateTime @default(now())
 
+  /// Dedup key: re-importing the same/overlapping report never double-counts.
+  /// Scoped by broker so two brokers numbering from 1 can't collide.
+  @@unique([broker, tradeNo])
   @@index([security])
   @@index([tradeDate])
   @@index([owner])
@@ -43,9 +47,40 @@ model PriceCache {
 model ImportBatch {
   id                Int      @id @default(autoincrement())
   owner             String   @default("Investor A")
+  broker            String   @default("finqalab") // profile slug used to read the file
+  parser            String   @default("reused") // reused | learned — did this upload cost an LLM call?
   filename          String
   uploadedAt        DateTime @default(now())
   totalParsed       Int
   tradesAdded       Int
   duplicatesSkipped Int
+}
+
+/// A broker statement parser, stored as a declarative spec (see src/lib/broker-spec.ts).
+///
+/// Built-in profiles are seeded from code; the rest are written once by an LLM the
+/// first time an unrecognised statement is uploaded, then replayed for free.
+model BrokerProfile {
+  id           Int                 @id @default(autoincrement())
+  slug         String              @unique
+  broker       String // display name, e.g. "Finqalab"
+  spec         String // BrokerParseSpec as JSON
+  source       String // builtin | llm
+  model        String? // which model authored it, when source = llm
+  notes        String? // the author's own note on how the layout reads
+  createdAt    DateTime            @default(now())
+  lastUsedAt   DateTime?
+  useCount     Int                 @default(0)
+  fingerprints BrokerFingerprint[]
+}
+
+/// Layout fingerprints known to belong to a profile — the fast path on re-upload.
+/// One profile accumulates several as a broker tweaks its report header.
+model BrokerFingerprint {
+  hash      String        @id
+  profileId Int
+  profile   BrokerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@index([profileId])
 }

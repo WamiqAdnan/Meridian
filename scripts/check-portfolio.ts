@@ -72,6 +72,44 @@ function checkResolution() {
     resolveAssetId({ security: "BTC", assetId: "crypto:BTC" }),
     "crypto:BTC",
   );
+
+  /*
+   * `security` alone never decides a market.
+   *
+   * `syncLedgerAssets` creates a PSX `Asset` for anything the ledger refers to
+   * that the catalogue lacks, and it has to read the market off `resolveAssetId`
+   * rather than off `security`. A hand-entered trade stores a bare ticker in
+   * `security` exactly like a PDF import does — the market is only in `assetId` —
+   * so `psx:{security}` invented a phantom PSX equity for every non-PSX position:
+   * a bogus row in the PSX listing and movers table, and a symbol nothing can
+   * ever price, since market-watch has never heard of it and `yahooSymbolFor`
+   * declines anything in the `psx` market.
+   *
+   * These assert the decision the sync depends on, over the rows the writers
+   * actually produce.
+   */
+  for (const [market, symbol] of [
+    ["crypto", "BTC"],
+    ["stocks", "AAPL"],
+    ["commodities", "XAU"],
+  ] as const) {
+    const built = buildManualTrade(
+      { owner: "Investor A", side: "BUY", tradeDate: "2026-08-01", qty: "1", rate: "100" },
+      { id: `${market}:${symbol}`, symbol, market },
+    );
+    ok(`a manual ${market} trade is buildable`, built.ok, built.ok ? "" : built.errors.join(" "));
+    if (!built.ok) continue;
+    eq(
+      `a manual ${market} trade stores a bare ticker in security`,
+      built.trade.security,
+      symbol,
+    );
+    eq(
+      `and still resolves to ${market}, not psx`,
+      resolveAssetId(built.trade),
+      `${market}:${symbol}`,
+    );
+  }
 }
 
 /* ------------------------------------------------------------- manual entry */

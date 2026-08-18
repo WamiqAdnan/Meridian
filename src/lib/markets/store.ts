@@ -8,10 +8,12 @@
  * `Asset`/`Quote`/`PriceBar` and reads `Transaction`, never the reverse.
  */
 import { prisma } from "@/lib/db";
+import { resolveAssetId } from "@/lib/ledger";
 import { CATALOGUE } from "./catalogue";
 import {
   assetId,
   isMarket,
+  parseAssetId,
   type AssetRef,
   type BarData,
   type Market,
@@ -112,28 +114,64 @@ export async function seedCatalogue(): Promise<{ seeded: number }> {
  * importer could ever have produced — so they resolve to `psx:{security}` and the
  * `assetId` column is backfilled in place. Nothing about the ledger's own numbers
  * is touched.
+ *
+ * **The market comes from `resolveAssetId`, never from `security` alone.** A
+ * hand-entered trade stores a bare ticker in `security` too — `buildManualTrade`
+ * writes `security: "BTC"` beside `assetId: "crypto:BTC"` — so reading the market
+ * off `security` invented a `psx:BTC` equity for every non-PSX position: a
+ * phantom row in the PSX listing and the movers table, a guaranteed failure on
+ * every refresh (market-watch has never heard of it, and `yahooSymbolFor`
+ * declines anything in the `psx` market, so no fallback exists), and a duplicate
+ * hit in the search box.
+ *
+ * A row that resolves to some *other* market is left alone rather than guessed
+ * at. Only `psx` can be reconstructed from a ticker — the currency and the
+ * provider follow from the market — and a holding with no `Asset` behind it is
+ * already reported: `buildPortfolio` shows it at cost and names it in a warning.
  */
 export async function syncLedgerAssets(): Promise<{ created: number; linked: number }> {
-  const securities = await prisma.transaction.findMany({
-    select: { security: true },
-    distinct: ["security"],
+  const rows = await prisma.transaction.findMany({
+    select: { security: true, assetId: true },
+    distinct: ["security", "assetId"],
   });
 
+  // Two ledger rows can resolve to one asset (a backfilled row and a fresh one),
+  // so resolve first and dedupe on the id rather than on the pair. The symbol is
+  // read back out of the id rather than off `security`, so the row it creates
+  // cannot disagree with its own key — and rebuilding through `assetId` uppercases
+  // it, so a hand-written `psx:ffc` does not become a second row beside `psx:FFC`.
+  const psxSymbols = new Map<string, string>();
+  for (const row of rows) {
+    const parsed = parseAssetId(resolveAssetId(row));
+    if (parsed?.market !== "psx") continue;
+    const symbol = parsed.symbol.toUpperCase();
+    psxSymbols.set(assetId("psx", symbol), symbol);
+  }
+
+  // One query rather than one per symbol: this runs before every refresh,
+  // including one triggered by a page render.
+  const present = new Set(
+    (
+      await prisma.asset.findMany({
+        where: { id: { in: [...psxSymbols.keys()] } },
+        select: { id: true },
+      })
+    ).map((a) => a.id),
+  );
+
   let created = 0;
-  for (const { security } of securities) {
-    const id = assetId("psx", security);
-    const existing = await prisma.asset.findUnique({ where: { id } });
-    if (existing) continue;
+  for (const [id, symbol] of psxSymbols) {
+    if (present.has(id)) continue;
     await prisma.asset.create({
       data: {
         id,
         market: "psx",
-        symbol: security.toUpperCase(),
-        name: security.toUpperCase(),
+        symbol,
+        name: symbol,
         kind: "stock",
         currency: "PKR",
         source: "psx",
-        sourceSymbol: security.toUpperCase(),
+        sourceSymbol: symbol,
         rank: 100,
         // Held, not seeded — it belongs in the movers table but not in the
         // "here is the PSX market" summary.

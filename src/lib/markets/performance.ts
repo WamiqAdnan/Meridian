@@ -69,7 +69,7 @@ function shiftDate(date: string, days: number): string {
  * window starting on a weekend or a holiday anchors to the Friday close rather
  * than reporting nothing.
  */
-export function barOnOrBefore(bars: BarData[], date: string): BarData | null {
+export function barOnOrBefore(bars: readonly BarData[], date: string): BarData | null {
   let lo = 0;
   let hi = bars.length - 1;
   let found: BarData | null = null;
@@ -83,6 +83,22 @@ export function barOnOrBefore(bars: BarData[], date: string): BarData | null {
     }
   }
   return found;
+}
+
+/**
+ * The date a window opens on, given the date it closes on.
+ *
+ * `day` has no calendar start — it is the previous *session*, whenever that was —
+ * so it answers null and is handled separately by anything that walks the periods.
+ *
+ * Exported because a chart needs the same window the numbers were computed over.
+ * Two definitions of "one month" would drift, and the drift would show up as a
+ * chart that disagreed with the percentage printed above it.
+ */
+export function windowStart(toDate: string, period: Period): string | null {
+  if (period === "day") return null;
+  if (period === "ytd") return `${toDate.slice(0, 4)}-01-01`;
+  return shiftDate(toDate, PERIOD_DAYS[period]);
 }
 
 function pctChange(from: number, to: number, fromDate: string, toDate: string): PeriodChange | null {
@@ -117,22 +133,16 @@ export function computePerformance(assetId: string, bars: BarData[]): AssetPerfo
     if (day) result.periods.day = day;
   }
 
-  for (const [period, days] of Object.entries(PERIOD_DAYS) as [
-    Exclude<Period, "day" | "ytd">,
-    number,
-  ][]) {
-    const start = barOnOrBefore(bars, shiftDate(toDate, days));
+  for (const period of PERIODS) {
+    const from = windowStart(toDate, period);
+    // `day` is the previous session, already handled above.
+    if (!from) continue;
+    const start = barOnOrBefore(bars, from);
     // Anchoring to the latest bar would report a 0% move rather than admitting
     // the series is too short to answer.
     if (!start || start.date === toDate) continue;
     const change = pctChange(start.close, to, start.date, toDate);
     if (change) result.periods[period] = change;
-  }
-
-  const yearStart = barOnOrBefore(bars, `${toDate.slice(0, 4)}-01-01`);
-  if (yearStart && yearStart.date !== toDate) {
-    const ytd = pctChange(yearStart.close, to, yearStart.date, toDate);
-    if (ytd) result.periods.ytd = ytd;
   }
 
   return result;

@@ -29,7 +29,15 @@ import {
   rankByChange,
   topMovers,
   unusualMove,
+  windowStart,
 } from "@/lib/markets/performance";
+import {
+  MIN_CHART_POINTS,
+  chartWindow,
+  niceStep,
+  priceScale,
+  seriesExtent,
+} from "@/lib/markets/chart";
 import { buildFxTable, convert, isMoney, rate } from "@/lib/markets/currency";
 import { parseChartPayload, yahooSymbolFor } from "@/lib/markets/providers/yahoo";
 import { parseEodPayload, isPsxIndex } from "@/lib/markets/providers/psx";
@@ -231,6 +239,175 @@ function checkPerformance() {
   const stale = computePerformance("stocks:TEST", series([100, 110], "2026-06-30"));
   eq("windows anchor on the latest bar, not today", stale.latestDate, "2026-06-30");
   near("a stale series still reports its day move", stale.periods.day?.changePct, 10);
+}
+
+/* ---------------------------------------------------------------- charts */
+
+function checkChart() {
+  section("Window arithmetic");
+
+  eq("a day has no calendar start", windowStart("2026-08-18", "day"), null);
+  eq("a week is seven days back", windowStart("2026-08-18", "week"), "2026-08-11");
+  eq("a month is thirty days back", windowStart("2026-08-18", "month"), "2026-07-19");
+  eq("a quarter is ninety-one days back", windowStart("2026-08-18", "quarter"), "2026-05-19");
+  eq("a year is 365 days back", windowStart("2026-08-18", "year"), "2025-08-18");
+  eq("YTD is the first of January", windowStart("2026-08-18", "ytd"), "2026-01-01");
+  eq("a window crosses a month boundary", windowStart("2026-03-05", "week"), "2026-02-26");
+  eq("…and a leap day", windowStart("2024-03-05", "week"), "2024-02-27");
+  eq("…and a year boundary", windowStart("2026-01-03", "week"), "2025-12-27");
+
+  section("Axis steps");
+
+  eq("a step of one stays one", niceStep(1), 1);
+  eq("just under one rounds up to one", niceStep(0.9), 1);
+  eq("1.5 becomes 2", niceStep(1.5), 2);
+  eq("2.3 becomes 2.5", niceStep(2.3), 2.5);
+  eq("3 becomes 5", niceStep(3), 5);
+  eq("7 becomes 10", niceStep(7), 10);
+  eq("12 becomes 20", niceStep(12), 20);
+  eq("small intervals keep their magnitude", niceStep(0.012), 0.02);
+  eq("a zero interval is not divided by", niceStep(0), 1);
+  eq("a negative interval is refused", niceStep(-5), 1);
+  eq("NaN is refused", niceStep(NaN), 1);
+  eq("Infinity is refused", niceStep(Infinity), 1);
+
+  section("Price scale");
+
+  eq("nothing to scale gives no scale", priceScale([]), null);
+  eq("non-finite values are not scaled", priceScale([NaN, Infinity]), null);
+
+  const equity = priceScale(Array.from({ length: 40 }, (_, i) => 100 + i));
+  eq("an equity range lands on round hundreds", equity?.ticks.join(","), "100,110,120,130,140");
+  eq("the axis bottom is the first tick", equity?.min, 100);
+  eq("the axis top is the last tick", equity?.max, 140);
+
+  const index = priceScale([7700.12, 7812.55]);
+  eq("a five-figure index labels in fifties", index?.ticks.join(","), "7700,7750,7800,7850");
+  ok("…covering the low", (index?.min ?? 0) <= 7700.12);
+  ok("…and the high", (index?.max ?? 0) >= 7812.55);
+
+  // A yield moves in hundredths of a percent. The float noise that
+  // `min + i * step` accumulates would print 4.650000000000001 on the axis.
+  const yieldScale = priceScale([4.6, 4.72]);
+  eq("a yield labels in clean fractions", yieldScale?.ticks.join(","), "4.6,4.65,4.7,4.75");
+
+  const spanningZero = priceScale([-3, 5]);
+  eq("a range spanning zero includes it", spanningZero?.ticks.join(","), "-4,-2,0,2,4,6");
+
+  const flat = priceScale([100, 100, 100]);
+  ok("a flat series still gets an axis", flat != null);
+  ok("…opened below the value", (flat?.min ?? 0) < 100);
+  ok("…and above it", (flat?.max ?? 0) > 100);
+  const flatZero = priceScale([0, 0]);
+  ok("a flat series at zero does not divide by zero", flatZero != null);
+  ok("…and brackets zero", (flatZero?.min ?? 1) < 0 && (flatZero?.max ?? -1) > 0);
+
+  const single = priceScale([100]);
+  ok("one value is treated as flat", single != null);
+  ok("…and still covers it", (single?.min ?? 0) <= 100 && (single?.max ?? 0) >= 100);
+
+  for (const scale of [equity, index, yieldScale, spanningZero, flat]) {
+    ok(
+      "ticks ascend",
+      scale != null && scale.ticks.every((t, i) => i === 0 || t > scale.ticks[i - 1]),
+    );
+    ok("ticks start at the minimum", scale?.ticks[0] === scale?.min);
+    ok("ticks end at the maximum", scale?.ticks[scale.ticks.length - 1] === scale?.max);
+    ok(
+      "a readable number of ticks",
+      (scale?.ticks.length ?? 0) >= 2 && (scale?.ticks.length ?? 0) <= 9,
+      `${scale?.ticks.length} ticks`,
+    );
+  }
+
+  section("Chart windows");
+
+  const forty = series(Array.from({ length: 40 }, (_, i) => 100 + i));
+
+  eq("an empty series draws nothing", chartWindow([], "week").bars.length, 0);
+  ok("…and says so", chartWindow([], "week").exact === false);
+
+  // 7 days back from 2026-08-18 is 2026-08-11, and the series is dense, so the
+  // reference session is that very bar: 08-11 through 08-18 inclusive.
+  const week = chartWindow(forty, "week");
+  eq("a week draws its own window", week.bars.length, 8);
+  eq("…anchored on the reference session", week.bars[0].date, "2026-08-11");
+  ok("…exactly", week.exact);
+
+  // 30 days back is 2026-07-19.
+  const month = chartWindow(forty, "month");
+  eq("a month draws its own window", month.bars.length, 31);
+  eq("…anchored on the reference session", month.bars[0].date, "2026-07-19");
+  ok("…exactly", month.exact);
+
+  const day = chartWindow(forty, "day");
+  eq("a day has no window, so recent sessions stand in", day.bars.length, MIN_CHART_POINTS);
+  ok("…and it does not claim to be the window", day.exact === false);
+
+  const year = chartWindow(forty, "year");
+  eq("a year takes everything there is", year.bars.length, 40);
+  ok("…and that is still the window", year.exact);
+
+  eq(
+    "a series shorter than the window is drawn whole",
+    chartWindow(series([1, 2, 3]), "week").bars.length,
+    3,
+  );
+  eq("a single bar cannot be a line", chartWindow(series([1]), "week").bars.length, 1);
+  ok("…so it is not the window", chartWindow(series([1]), "week").exact === false);
+
+  // The reference session is the point of all this: on a market that does not
+  // trade every day the window start lands in a gap, and the bar the percentage
+  // was measured *from* sits before it. Drawing from inside the window instead
+  // spans a different move, and the two can disagree about its direction.
+  const gappy: BarData[] = [
+    { ...series([1])[0], date: "2026-08-04", close: 100 },
+    { ...series([1])[0], date: "2026-08-07", close: 120 },
+    { ...series([1])[0], date: "2026-08-14", close: 110 },
+    { ...series([1])[0], date: "2026-08-18", close: 118 },
+  ];
+  const gapWeek = chartWindow(gappy, "week");
+  ok(
+    "a window opening in a gap starts on the prior session",
+    gapWeek.bars[0].date <= "2026-08-11",
+    gapWeek.bars[0].date,
+  );
+  eq("…which is the bar the change is measured from", gapWeek.bars[0].date, "2026-08-07");
+  eq(
+    "…the same bar computePerformance anchors on",
+    computePerformance("stocks:TEST", gappy).periods.week?.fromDate,
+    gapWeek.bars[0].date,
+  );
+  eq(
+    "…so the chart and the percentage agree on the open",
+    seriesExtent(gapWeek.bars)?.first,
+    computePerformance("stocks:TEST", gappy).periods.week?.from,
+  );
+
+  const drawn = week.bars;
+  eq("the window ends on the latest bar", drawn[drawn.length - 1].date, "2026-08-18");
+  ok("the window stays oldest-first", drawn[0].date < drawn[drawn.length - 1].date);
+  ok("the window never invents bars", drawn.length <= forty.length);
+
+  section("Series extent");
+
+  eq("an empty series has no extent", seriesExtent([]), null);
+
+  const extent = seriesExtent(series([100, 120, 90, 110]));
+  eq("the open is the first close", extent?.first, 100);
+  eq("the close is the last close", extent?.last, 110);
+  eq("the high is the highest close", extent?.high, 120);
+  eq("the low is the lowest close", extent?.low, 90);
+  eq("sessions are counted", extent?.sessions, 4);
+  eq("the window ends on the last bar", extent?.to, "2026-08-18");
+  eq("…and starts on the first", extent?.from, "2026-08-15");
+  near("the move is measured across what was drawn", extent?.changePct, 10);
+
+  const oneBar = seriesExtent(series([42]));
+  eq("one bar opens and closes at the same price", oneBar?.first, oneBar?.last);
+  near("…and has not moved", oneBar?.changePct, 0);
+
+  eq("a zero open yields no percentage", seriesExtent(series([0, 50]))?.changePct, null);
 }
 
 /* --------------------------------------------------------------- movers */
@@ -703,6 +880,7 @@ async function checkConcurrency() {
 async function main() {
   checkTaxonomy();
   checkPerformance();
+  checkChart();
   checkMovers();
   checkCurrency();
   checkYahoo();

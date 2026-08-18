@@ -48,7 +48,7 @@ export default function NotFound() {
           autoFocus
           placeholder="Ticker, name or market"
           aria-label="Search assets"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none placeholder:text-muted focus-visible:border-accent"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm placeholder:text-muted focus-visible:border-accent"
         />
         <button
           type="submit"

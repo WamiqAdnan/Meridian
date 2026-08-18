@@ -1,5 +1,21 @@
 import { fmtMoney } from "@/lib/format";
 
+/**
+ * Allocation by value, as a ring with a legend.
+ *
+ * **The legend is the text alternative, so the ring is `aria-hidden`.** Every
+ * slice already appears below it as a label, a percentage and an amount — a
+ * `role="img"` with a summarising `aria-label` would make a screen reader read
+ * the same twelve holdings twice, once approximately and once exactly. The
+ * `figure`/`figcaption` names the pair so the list is not encountered as a bare
+ * run of numbers.
+ *
+ * Painted from the design tokens; it had kept its own `neutral-*` greys, which
+ * left the legend's amounts at a different weight from every other muted number
+ * on the page. The slice palette stays literal — an SVG `stroke` cannot take a
+ * Tailwind class, and these are categorical colours rather than semantic ones,
+ * so they are not the `--gain`/`--loss` pair.
+ */
 const PALETTE = [
   "#2563eb", "#16a34a", "#db2777", "#f59e0b", "#7c3aed",
   "#0891b2", "#dc2626", "#65a30d", "#c026d3", "#0d9488",
@@ -17,7 +33,7 @@ export default function AllocationDonut({
 }) {
   const positive = data.filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
   if (positive.length === 0) {
-    return <p className="text-sm text-neutral-500">No positions to chart yet.</p>;
+    return <p className="text-sm text-muted">No positions to chart yet.</p>;
   }
 
   // Cap the legend: top 9 + aggregated "Others".
@@ -55,8 +71,12 @@ export default function AllocationDonut({
   }
 
   return (
-    <div className="flex flex-col items-center gap-5">
-      <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0">
+    <figure className="flex flex-col items-center gap-5">
+      <figcaption className="sr-only">
+        Allocation by market value, {slices.length} slice{slices.length === 1 ? "" : "s"},
+        listed below with each share of the total.
+      </figcaption>
+      <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0" aria-hidden>
         <g transform="rotate(-90 80 80)">
           {segments.map((d) => {
             const len = d.frac * C;
@@ -88,14 +108,14 @@ export default function AllocationDonut({
               <div className="min-w-0 leading-tight">
                 <div className="flex items-baseline gap-1.5">
                   <span className="truncate font-medium">{d.label}</span>
-                  <span className="tabular-nums text-neutral-500">{pct}%</span>
+                  <span className="tabular-nums text-muted">{pct}%</span>
                 </div>
-                <div className="tabular-nums text-neutral-500">{fmtMoney(d.value, currency)}</div>
+                <div className="tabular-nums text-muted">{fmtMoney(d.value, currency)}</div>
               </div>
             </li>
           );
         })}
       </ul>
-    </div>
+    </figure>
   );
 }

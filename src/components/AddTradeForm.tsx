@@ -14,7 +14,7 @@ export interface AssetOption {
 }
 
 const FIELD =
-  "w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-accent";
+  "w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm text-foreground focus:border-accent";
 const LABEL = "mb-1 block text-xs font-medium uppercase tracking-wide text-muted";
 
 function today(): string {

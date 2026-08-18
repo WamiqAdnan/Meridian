@@ -159,7 +159,7 @@ export default function AssetSearch() {
           aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
           aria-busy={busy}
-          className="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm placeholder:text-muted focus:border-accent focus:outline-none"
+          className="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm placeholder:text-muted focus:border-accent"
         />
       </Form>
 

@@ -2,8 +2,17 @@ import Link from "next/link";
 import { INVESTORS } from "@/lib/investors";
 
 /**
- * Segmented control to switch the view between the combined portfolio ("Together")
- * and each individual investor. Pure navigation via `?owner=` — no client JS needed.
+ * Switch the view between the combined portfolio ("Together") and each individual
+ * investor. Pure navigation via `?owner=` — no client JS needed.
+ *
+ * A named `nav` of links rather than an ARIA tablist, for the reason set out in
+ * `PeriodTabs`: these navigate, so `aria-current="page"` is the honest marker and
+ * a tablist would promise keyboard behaviour that a full page load cannot honour.
+ *
+ * Painted from the design tokens like everything else. It had kept a hand-rolled
+ * `neutral-*` palette with its own dark-mode overrides since before the tokens
+ * existed, which made it the one control on the overview that did not match the
+ * two beside it.
  */
 export default function InvestorSwitcher({
   basePath,
@@ -29,7 +38,10 @@ export default function InvestorSwitcher({
   };
 
   return (
-    <div className="inline-flex rounded-lg border border-neutral-300 p-0.5 text-sm dark:border-neutral-700">
+    <nav
+      className="inline-flex rounded-lg border border-line bg-surface p-0.5 text-sm"
+      aria-label="Investor"
+    >
       {options.map((o) => {
         const active = o.owner === selected;
         return (
@@ -38,15 +50,13 @@ export default function InvestorSwitcher({
             href={href(o.owner)}
             aria-current={active ? "page" : undefined}
             className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              active
-                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              active ? "bg-surface-raised text-foreground" : "text-muted hover:text-foreground"
             }`}
           >
             {o.label}
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

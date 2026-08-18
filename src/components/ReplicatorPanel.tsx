@@ -226,7 +226,7 @@ export default function ReplicatorPanel({
               value={indexCode}
               onChange={(e) => changeIndex(e.target.value as IndexCode)}
               disabled={loading}
-              className="rounded-lg border border-neutral-300 bg-transparent px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none disabled:opacity-50 dark:border-neutral-700"
+              className="rounded-lg border border-neutral-300 bg-transparent px-2 py-1.5 text-sm focus:border-blue-500 disabled:opacity-50 dark:border-neutral-700"
             >
               {INDEX_OPTIONS.map((o) => (
                 <option key={o.code} value={o.code}>
@@ -270,7 +270,7 @@ export default function ReplicatorPanel({
                 placeholder={
                   "Paste rows from dps.psx.com.pk → Indices, e.g.\nFFC  Fauji Fertilizer Company Limited  543.22  545.00  1.78  0.33%  11.89%  93.09  940,148  566  308,331\n\nOr one line per name: FFC 545.00 11.89"
                 }
-                className="w-full overflow-x-auto rounded-xl border border-neutral-300 bg-transparent p-3 font-mono text-xs leading-relaxed placeholder:text-neutral-400 focus:border-blue-500 focus:outline-none dark:border-neutral-700"
+                className="w-full overflow-x-auto rounded-xl border border-neutral-300 bg-transparent p-3 font-mono text-xs leading-relaxed placeholder:text-neutral-400 focus:border-blue-500 dark:border-neutral-700"
               />
               {basket.length > 0 && (
                 <p className="mt-1 text-xs text-neutral-500">
@@ -318,7 +318,7 @@ export default function ReplicatorPanel({
                   value={topNText}
                   onChange={(e) => changeTopN(e.target.value)}
                   inputMode="numeric"
-                  className="w-16 rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-sm tabular-nums focus:border-blue-500 focus:outline-none dark:border-neutral-700"
+                  className="w-16 rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-sm tabular-nums focus:border-blue-500 dark:border-neutral-700"
                 />
                 <span className="text-neutral-500">by weight</span>
               </label>
@@ -327,7 +327,7 @@ export default function ReplicatorPanel({
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as SortKey)}
-                  className="rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-neutral-700"
+                  className="rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-sm focus:border-blue-500 dark:border-neutral-700"
                 >
                   <option value="weight">Weight</option>
                   <option value="symbol">Symbol</option>
@@ -386,7 +386,7 @@ export default function ReplicatorPanel({
                 onChange={(e) => setAmountText(e.target.value)}
                 inputMode="numeric"
                 placeholder="300,000"
-                className="w-36 bg-transparent px-2 py-1.5 text-sm tabular-nums focus:outline-none"
+                className="w-36 bg-transparent px-2 py-1.5 text-sm tabular-nums"
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -635,7 +635,7 @@ function FeeField({
         step="any"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-0.5 w-full rounded-md border border-neutral-300 bg-transparent px-2 py-1 tabular-nums focus:border-blue-500 focus:outline-none dark:border-neutral-700"
+        className="mt-0.5 w-full rounded-md border border-neutral-300 bg-transparent px-2 py-1 tabular-nums focus:border-blue-500 dark:border-neutral-700"
       />
     </label>
   );

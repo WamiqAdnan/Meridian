@@ -17,11 +17,13 @@
     "market:backfill": "tsx scripts/refresh-market.ts --history",
     "news:refresh": "tsx scripts/refresh-news.ts",
     "insights:generate": "tsx scripts/generate-insights.ts",
+    "schedule": "tsx scripts/schedule.ts",
     "check:market": "tsx scripts/check-market.ts",
     "check:news": "tsx scripts/check-news.ts",
     "check:insights": "tsx scripts/check-insights.ts",
     "check:portfolio": "tsx scripts/check-portfolio.ts",
-    "check:search": "tsx scripts/check-search.ts"
+    "check:search": "tsx scripts/check-search.ts",
+    "check:schedule": "tsx scripts/check-schedule.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

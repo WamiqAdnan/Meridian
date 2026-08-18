@@ -169,6 +169,54 @@ movements, one per headline. The validator caught all twenty; the design was wro
 Run `market:refresh` and `news:refresh` first. With no daily bars nothing can be
 called unusual at all, and the run has nothing to do.
 
+### Running all of it unattended
+
+```bash
+npm run schedule                  # what would run, how often, and what is installed
+npm run schedule -- --install     # write the launchd agents and load them
+npm run schedule -- --uninstall
+```
+
+Five jobs, declared in [`src/lib/schedule.ts`](src/lib/schedule.ts):
+
+| Job | Cadence | Runs |
+|---|---|---|
+| `market-refresh` | every 5 minutes | `market:refresh` |
+| `market-backfill` | daily 06:00 | `market:backfill` |
+| `news-refresh` | every 30 minutes | `news:refresh` |
+| `news-prune` | daily 06:20 | `news:refresh -- --prune=90` |
+| `insights-weekly` | Monday 08:00 | `market:backfill` → `news:refresh` → `insights:generate -- --prune=26` |
+
+Three things about that table are deliberate.
+
+**The two intervals are the staleness windows, not numbers near them.**
+`market-refresh` runs every `QUOTE_TTL_MS` and `news-refresh` every `NEWS_TTL_MS`,
+imported from the modules that define them. A schedule that drifts from the TTL it
+exists to stay ahead of looks like coverage while leaving a gap where every visitor
+still pays for the fetch. `check:schedule` fails if they diverge.
+
+**The weekly job is a chain, not a time.** An insight reasons over a week of bars
+and headlines, so it needs both to have landed. Scheduling three jobs to fall in the
+right order is a guess about how long a backfill takes; `&&` is a guarantee. It costs
+one redundant backfill a week and removes the whole class of "the insight ran before
+the data did".
+
+**launchd rather than cron.** On a laptop, cron simply skips whatever was due while
+the lid was shut and never mentions it — which is every Monday morning that starts
+late, and the weekly insight is the one job that cannot be caught by the next tick.
+launchd runs a missed calendar job on wake. It also runs one instance per label at a
+time, which keeps a slow refresh from stacking up against rate-limited providers.
+`npm run schedule -- --crontab` prints the same schedule as cron lines for a machine
+that is not a Mac; read it as documentation of the schedule rather than a second
+supported path.
+
+Each job writes to `logs/<job>.log` (git-ignored), and `npm run schedule` tails the
+last line of each. `npm run schedule -- --run=news-refresh` triggers one immediately
+through launchd, which is the quickest way to prove an installed agent works — a
+launchd job inherits a bare `PATH` with no `npm` on it, so the agents run through a
+login shell, and "command not found" in an otherwise empty log is what a missing
+profile looks like.
+
 ---
 
 ## Environment
@@ -370,8 +418,8 @@ named in a warning rather than dropped from the total.
 
 ## Testing
 
-No test runner. Seven standalone check scripts, each deterministic and each
-runnable on its own — 1,270 checks in total:
+No test runner. Eight standalone check scripts, each deterministic and each
+runnable on its own — 1,414 checks in total:
 
 ```bash
 npm run check:parse       # statement parser: spec engine, validator, learning loop
@@ -381,10 +429,11 @@ npm run check:news        # news: RSS parsing, terms, relevance, providers, regi
 npm run check:portfolio   # portfolio: asset resolution, manual entry, the engine
 npm run check:insights    # AI layer + insights: weeks, evidence, prompt, validator
 npm run check:search      # search: scoring tiers, aliases, multi-word, total ordering
+npm run check:schedule    # schedule: cadences, the weekly chain, plist and cron rendering
 ```
 
-`check:market`, `check:news`, `check:portfolio`, `check:insights` and
-`check:search` run with no network and no database — payload parsing is exercised against captured payloads in
+`check:market`, `check:news`, `check:portfolio`, `check:insights`,
+`check:search` and `check:schedule` run with no network and no database — payload parsing is exercised against captured payloads in
 `data/reference/market/` and `data/reference/news/`, and both registries are
 driven with stub providers to prove routing, merging and containment of a
 provider that throws. `check:news` passes every date in explicitly, so it gives

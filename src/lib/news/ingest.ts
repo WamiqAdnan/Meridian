@@ -21,7 +21,7 @@
  * from a quiet news day unless somebody is counting.
  */
 import { prisma } from "@/lib/db";
-import { daysAgo, listAssets, loadBars } from "@/lib/markets/store";
+import { daysAgo, daysBefore, listAssets, loadBars } from "@/lib/markets/store";
 import { MARKETS, type AssetRef, type Market } from "@/lib/markets/types";
 import { curatedProviderIds, fetchNews, type NewsQueryOutcome } from "./registry";
 import { matchArticle, newsworthy, type NewsCandidate } from "./relevance";
@@ -80,13 +80,16 @@ export interface IngestOutcome {
  * explanation.
  */
 export async function newsworthyAssets(
-  options: { market?: Market; minZ?: number; limit?: number } = {},
+  options: { market?: Market; minZ?: number; limit?: number; asOf?: string } = {},
 ): Promise<NewsCandidate[]> {
   const assets = await listAssets({ market: options.market });
   if (assets.length === 0) return [];
+  // `asOf` scores the last session on or before that date instead of the latest
+  // one, so a pack built for a past week asks what was unusual *then*.
   const bars = await loadBars(
     assets.map((a) => a.id),
-    daysAgo(BARS_WINDOW_DAYS),
+    options.asOf ? daysBefore(options.asOf, BARS_WINDOW_DAYS) : daysAgo(BARS_WINDOW_DAYS),
+    options.asOf,
   );
   return newsworthy(
     assets.map((asset) => ({ asset, bars: bars.get(asset.id) ?? [] })),

@@ -46,7 +46,7 @@ import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter"
 import { quoteFromBars, mapWithConcurrency } from "@/lib/markets/providers/shared";
 import { candidateProviders, fetchAssets } from "@/lib/markets/registry";
 import { CATALOGUE } from "@/lib/markets/catalogue";
-import { catalogueDrift, type StoredDescription } from "@/lib/markets/store";
+import { catalogueDrift, daysBefore, type StoredDescription } from "@/lib/markets/store";
 
 let failures = 0;
 let checks = 0;
@@ -195,6 +195,14 @@ function checkTaxonomy() {
   );
   eq("a seeded asset that lost its benchmark flag drifts", drift({ benchmark: false }).length, 1);
   eq("and it is the drifted entry that comes back", drift({ name: "Renamed Plc" })[0].id, sample[0].id);
+
+  // How far back a bar window starts when it is anchored on a past date rather
+  // than on today — what makes a series readable as of a week that has closed.
+  eq("a window counts back in whole days", daysBefore("2026-08-18", 7), "2026-08-11");
+  eq("…across a month boundary", daysBefore("2026-08-03", 7), "2026-07-27");
+  eq("…across a year boundary", daysBefore("2026-01-02", 7), "2025-12-26");
+  eq("…and over a leap day", daysBefore("2028-03-01", 1), "2028-02-29");
+  eq("zero days is the day itself", daysBefore("2026-08-18", 0), "2026-08-18");
 }
 
 /* ---------------------------------------------------------- performance */

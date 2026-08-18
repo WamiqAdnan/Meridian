@@ -8,7 +8,14 @@
  * The engines stay pure; this is the seam where they meet stored data.
  */
 import { computePerformance, topMovers, type AssetPerformance, type Period } from "./performance";
-import { daysAgo, getAsset, listAssetsWithQuotes, loadBars, type AssetWithQuote } from "./store";
+import {
+  daysAgo,
+  daysBefore,
+  getAsset,
+  listAssetsWithQuotes,
+  loadBars,
+  type AssetWithQuote,
+} from "./store";
 import { fxTableFromAssets, type FxTable } from "./currency";
 import { MARKET_META, isNotional, type BarData, type Market } from "./types";
 
@@ -50,12 +57,21 @@ function median(values: number[]): number | null {
  * One pass over the database for all markets — cheaper than per-market queries
  * and it is what makes cross-market movers possible.
  */
-export async function loadAssetViews(options: { market?: Market } = {}): Promise<{
+export async function loadAssetViews(
+  options: { market?: Market; asOf?: string } = {},
+): Promise<{
   assets: AssetView[];
   fx: FxTable;
 }> {
   const rows = await listAssetsWithQuotes();
-  const bars = await loadBars(rows.map((a) => a.id), daysAgo(HISTORY_DAYS));
+  // `asOf` reads the market as it stood at the close of a past day: the bar
+  // window shifts back with it, and `computePerformance` anchors on the last bar
+  // in the series, so every period reported is that day's rather than today's.
+  const bars = await loadBars(
+    rows.map((a) => a.id),
+    options.asOf ? daysBefore(options.asOf, HISTORY_DAYS) : daysAgo(HISTORY_DAYS),
+    options.asOf,
+  );
 
   const assets: AssetView[] = rows.map((a) => {
     const series = bars.get(a.id) ?? [];

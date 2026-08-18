@@ -37,6 +37,7 @@ import { buildRepair, buildRequest, SYSTEM_PROMPT } from "@/lib/insights/prompt"
 import { INSIGHT_SCHEMA, LIMITS, supportedFigures, validateInsight } from "@/lib/insights/schema";
 import { resolveReadings, statusFor } from "@/lib/insights/generate";
 import {
+  endOfDay,
   weekEndOf,
   weekStartOf,
   type EvidencePack,
@@ -253,6 +254,12 @@ function checkWeeks() {
   );
   eq("…and works across a year boundary", weekStartOf("2027-01-01"), "2026-12-28");
   eq("…and across a leap day", weekStartOf("2028-02-29"), "2028-02-28");
+
+  // Where a week's evidence window closes. A date alone would cut the last day
+  // off, dropping every headline filed after midnight on the Sunday.
+  eq("a day ends at its last millisecond", endOfDay("2026-08-23").toISOString(), "2026-08-23T23:59:59.999Z");
+  ok("…which is after anything published that day", endOfDay("2026-08-23") > new Date("2026-08-23T22:00:00Z"));
+  ok("…and before the next", endOfDay("2026-08-23") < new Date("2026-08-24T00:00:00Z"));
 }
 
 /* ----------------------------------------------------------------- schema */
@@ -342,6 +349,32 @@ function checkEvidence() {
     { weekStart: WEEK },
   );
   eq("…but the Friday before the week is kept", friday.length, 1);
+
+  // The window is bounded at both ends, because a pack for a past week must not
+  // sweep in the present: generating --week=<past> filed the current week's
+  // headlines, and the current week's moves, under the old week's key.
+  const PAST = "2026-07-06"; // closes Sunday 2026-07-12
+  const late = selectArticles(
+    [article({ id: "late", publishedAt: new Date("2026-08-18T09:00:00Z") })],
+    [],
+    { weekStart: PAST },
+  );
+  eq("a headline published after the week is dropped", late.length, 0);
+  const sunday = selectArticles(
+    [article({ id: "sun", publishedAt: new Date("2026-07-12T23:00:00Z") })],
+    [],
+    { weekStart: PAST },
+  );
+  eq("…one from the week's closing day is kept", sunday.length, 1);
+  const monday = selectArticles(
+    [article({ id: "mon", publishedAt: new Date("2026-07-06T08:00:00Z") })],
+    [],
+    { weekStart: PAST },
+  );
+  eq("…as is one from the day it opened", monday.length, 1);
+  // The current week has not closed yet, so nothing about today's pack changes.
+  const current = selectArticles([article({ id: "now" })], [], { weekStart: WEEK });
+  eq("this week's pack still keeps this week's headline", current.length, 1);
 
   // An insight needs a movement to anchor it. Headlines alone are not enough, and
   // that is not a token-saving rule: asked about twenty headlines and no movements,

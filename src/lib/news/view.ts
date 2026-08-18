@@ -69,15 +69,22 @@ export interface NewsFeedOptions {
   assetIds?: string[];
   limit?: number;
   days?: number;
+  /**
+   * End of the window. Defaults to now, and `days` is counted back from it — so
+   * asking for a past week returns that week's headlines rather than this one's.
+   */
+  until?: Date;
 }
 
 /** The headlines a page should show, already filtered and ordered. */
 export async function loadNewsFeed(options: NewsFeedOptions = {}): Promise<NewsItem[]> {
   const days = options.days ?? DEFAULT_DAYS;
+  const anchor = options.until?.getTime() ?? Date.now();
   return listNews({
     market: options.market,
     assetIds: options.assetIds,
-    since: new Date(Date.now() - days * 86_400_000),
+    since: new Date(anchor - days * 86_400_000),
+    until: options.until,
     limit: options.limit,
   });
 }

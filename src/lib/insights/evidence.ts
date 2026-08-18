@@ -29,7 +29,7 @@ import type { NewsItem } from "@/lib/news/store";
 import type { MatchVia } from "@/lib/news/types";
 import type { NewsCandidate } from "@/lib/news/relevance";
 import type { EvidenceArticle, EvidencePack, MovementFact } from "./types";
-import { weekEndOf } from "./types";
+import { endOfDay, weekEndOf } from "./types";
 
 /**
  * How much fits in one brief.
@@ -127,9 +127,13 @@ export function selectArticles(
   const limit = options.limit ?? PACK_LIMITS.articles;
   const refByAsset = new Map(movements.map((m) => [m.assetId, m.ref]));
   const since = daysBefore(options.weekStart, LOOKBACK_DAYS);
+  // Bounded above as well, or a pack for a past week fills up with the present:
+  // the week that has not closed yet ends in the future, so this is a no-op on
+  // the only case that runs in normal use.
+  const until = endOfDay(weekEndOf(options.weekStart));
 
   const scored = news
-    .filter((item) => item.article.publishedAt >= since)
+    .filter((item) => item.article.publishedAt >= since && item.article.publishedAt <= until)
     .map((item) => {
       const links = item.matches
         .filter((m) => refByAsset.has(m.assetId))

@@ -24,6 +24,8 @@ import { buildRepair, buildRequest, SYSTEM_PROMPT } from "./prompt";
 import { INSIGHT_SCHEMA, validateInsight } from "./schema";
 import { loadInsight, saveInsight } from "./store";
 import {
+  endOfDay,
+  weekEndOf,
   weekStartOf,
   type EvidencePack,
   type InsightBody,
@@ -79,10 +81,15 @@ export type GenerateOutcome =
  */
 export async function buildPackForMarket(options: GenerateOptions): Promise<EvidencePack> {
   const weekStart = options.weekStart ?? weekStartOf(options.now ?? new Date());
+  // Every source below is read as of the week's close, so a pack for a past week
+  // is that week's rather than this one's filed under an old key. The current
+  // week closes in the future, which every layer below reads as "everything" —
+  // the live path is unchanged.
+  const asOf = weekEndOf(weekStart);
 
   // Load every market, then narrow: a market's headline asset may live elsewhere
   // (US Stocks is headlined by the S&P, which sits in `indices`).
-  const { assets: all } = await loadAssetViews();
+  const { assets: all } = await loadAssetViews({ asOf });
   const assets = all.filter((a) => a.market === options.market);
   const [view] = buildMarketViews(assets, "week", all);
 
@@ -91,8 +98,14 @@ export async function buildPackForMarket(options: GenerateOptions): Promise<Evid
     market: options.market,
     minZ: options.minZ,
     limit: options.movementLimit,
+    asOf,
   });
-  const news = await loadNewsFeed({ market: options.market, days: NEWS_DAYS, limit: NEWS_LIMIT });
+  const news = await loadNewsFeed({
+    market: options.market,
+    days: NEWS_DAYS,
+    limit: NEWS_LIMIT,
+    until: endOfDay(asOf),
+  });
 
   return buildEvidencePack({
     market: options.market,

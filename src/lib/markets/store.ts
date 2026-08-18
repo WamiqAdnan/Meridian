@@ -306,12 +306,22 @@ export async function getAsset(id: string): Promise<AssetWithQuote | null> {
 export async function loadBars(
   assetIds: string[],
   sinceDate?: string,
+  untilDate?: string,
 ): Promise<Map<string, BarData[]>> {
   if (assetIds.length === 0) return new Map();
   const rows = await prisma.priceBar.findMany({
     where: {
       assetId: { in: assetIds },
-      ...(sinceDate ? { date: { gte: sinceDate } } : {}),
+      ...(sinceDate || untilDate
+        ? {
+            date: {
+              ...(sinceDate ? { gte: sinceDate } : {}),
+              // An upper bound is what makes a series readable as of a past date:
+              // every window engine anchors on the last bar it is given.
+              ...(untilDate ? { lte: untilDate } : {}),
+            },
+          }
+        : {}),
     },
     orderBy: [{ assetId: "asc" }, { date: "asc" }],
   });
@@ -338,6 +348,13 @@ export async function loadBars(
 /** yyyy-mm-dd `days` before today, in UTC. */
 export function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The same, counted back from a given yyyy-mm-dd rather than from today. */
+export function daysBefore(date: string, days: number): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() - days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 /* ----------------------------------------------------------------- writing */

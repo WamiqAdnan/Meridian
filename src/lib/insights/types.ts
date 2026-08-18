@@ -223,6 +223,11 @@ export function weekStartOf(date: Date | string = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** The last instant of a yyyy-mm-dd day, in UTC — where a week's window ends. */
+export function endOfDay(date: string): Date {
+  return new Date(`${date}T23:59:59.999Z`);
+}
+
 /** The Sunday that closes the week starting at `weekStart`. */
 export function weekEndOf(weekStart: string): string {
   const d = new Date(`${weekStart}T00:00:00Z`);

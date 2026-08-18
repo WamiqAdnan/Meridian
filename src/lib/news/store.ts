@@ -153,6 +153,8 @@ export interface NewsFilter {
   /** Articles matched to any of these assets. */
   assetIds?: string[];
   since?: Date;
+  /** Articles published no later than this. Omit for "up to now". */
+  until?: Date;
   limit?: number;
   /** Drop matches weaker than this from the returned rows. */
   minScore?: number;
@@ -214,7 +216,12 @@ export async function listNews(filter: NewsFilter = {}): Promise<NewsItem[]> {
   const minScore = filter.minScore ?? 0;
 
   const where: Record<string, unknown> = {};
-  if (filter.since) where.publishedAt = { gte: filter.since };
+  if (filter.since || filter.until) {
+    where.publishedAt = {
+      ...(filter.since ? { gte: filter.since } : {}),
+      ...(filter.until ? { lte: filter.until } : {}),
+    };
+  }
   if (filter.market) {
     where.OR = [{ market: filter.market }, { matches: { some: { asset: { market: filter.market } } } }];
   }

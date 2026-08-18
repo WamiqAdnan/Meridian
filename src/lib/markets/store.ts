@@ -63,6 +63,48 @@ function toRef(row: AssetRow): AssetRef {
 
 /* ----------------------------------------------------------------- seeding */
 
+/** The columns `seedCatalogue` maintains, as the database has them. */
+export interface StoredDescription {
+  id: string;
+  name: string;
+  kind: string;
+  currency: string;
+  source: string;
+  sourceSymbol: string;
+  rank: number;
+  benchmark: boolean;
+}
+
+/**
+ * The catalogue entries the table is missing or disagrees with.
+ *
+ * Compares only what `seedCatalogue` writes on update. `active` is deliberately
+ * absent — an asset the user switched off must stay off — and so are `market` and
+ * `symbol`, which are what the id is made of and cannot drift without becoming a
+ * different row entirely.
+ */
+export function catalogueDrift(
+  stored: StoredDescription[],
+  catalogue: AssetRef[] = CATALOGUE,
+): AssetRef[] {
+  const byId = new Map(stored.map((r) => [r.id, r]));
+  return catalogue.filter((a) => {
+    const row = byId.get(a.id);
+    if (!row) return true;
+    return (
+      row.name !== a.name ||
+      row.kind !== a.kind ||
+      row.currency !== a.currency ||
+      row.source !== a.source ||
+      row.sourceSymbol !== a.sourceSymbol ||
+      row.rank !== a.rank ||
+      // Every seeded asset is a benchmark by definition; the column is written
+      // true on create and on update alike.
+      row.benchmark !== true
+    );
+  });
+}
+
 /**
  * Write the seed catalogue into `Asset`.
  *
@@ -71,13 +113,28 @@ function toRef(row: AssetRow): AssetRef {
  * asset the user has switched off stays off across restarts.
  */
 export async function seedCatalogue(): Promise<{ seeded: number }> {
-  // This runs before every refresh, including one triggered by a page render.
-  // Once the catalogue is fully present there is nothing to write, so skip the
-  // ~90 upserts rather than repeat them on each stale page load.
-  const present = await prisma.asset.count({ where: { id: { in: CATALOGUE.map((a) => a.id) } } });
-  if (present === CATALOGUE.length) return { seeded: 0 };
+  // This runs before every refresh, including one triggered by a page render, so
+  // it reads what is there and writes only what differs. Skipping on a count of
+  // ids instead meant the update path above never ran: once every id existed —
+  // which is to say, always after the first boot — a rename or a corrected
+  // provider symbol in this file could never reach the table it describes.
+  const stored = await prisma.asset.findMany({
+    where: { id: { in: CATALOGUE.map((a) => a.id) } },
+    select: {
+      id: true,
+      name: true,
+      kind: true,
+      currency: true,
+      source: true,
+      sourceSymbol: true,
+      rank: true,
+      benchmark: true,
+    },
+  });
+  const drifted = catalogueDrift(stored);
+  if (drifted.length === 0) return { seeded: 0 };
 
-  for (const a of CATALOGUE) {
+  for (const a of drifted) {
     await prisma.asset.upsert({
       where: { id: a.id },
       create: {
@@ -103,7 +160,7 @@ export async function seedCatalogue(): Promise<{ seeded: number }> {
       },
     });
   }
-  return { seeded: CATALOGUE.length };
+  return { seeded: drifted.length };
 }
 
 /**

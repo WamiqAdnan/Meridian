@@ -46,6 +46,7 @@ import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter"
 import { quoteFromBars, mapWithConcurrency } from "@/lib/markets/providers/shared";
 import { candidateProviders, fetchAssets } from "@/lib/markets/registry";
 import { CATALOGUE } from "@/lib/markets/catalogue";
+import { catalogueDrift, type StoredDescription } from "@/lib/markets/store";
 
 let failures = 0;
 let checks = 0;
@@ -156,6 +157,44 @@ function checkTaxonomy() {
     CATALOGUE.filter((a) => isNotional(a.kind)).every((a) => !isMoney(a.currency)),
     true,
   );
+
+  // What seedCatalogue decides to write. It used to count ids and skip when they
+  // were all present, which is every boot after the first — so the update path,
+  // and the rename it exists to apply, could never run.
+  const sample = CATALOGUE.slice(0, 3);
+  const stored = (a: AssetRef, over: Partial<StoredDescription> = {}): StoredDescription => ({
+    id: a.id,
+    name: a.name,
+    kind: a.kind,
+    currency: a.currency,
+    source: a.source,
+    sourceSymbol: a.sourceSymbol,
+    rank: a.rank,
+    benchmark: true,
+    ...over,
+  });
+  const drift = (over: Partial<StoredDescription>) =>
+    catalogueDrift(sample.map((a, i) => (i === 0 ? stored(a, over) : stored(a))), sample);
+
+  eq("a table in sync drifts nothing", catalogueDrift(sample.map((a) => stored(a)), sample).length, 0);
+  eq(
+    "the real catalogue, faithfully stored, drifts nothing",
+    catalogueDrift(CATALOGUE.map((a) => stored(a))).length,
+    0,
+  );
+  eq("a missing row drifts", catalogueDrift(sample.slice(1).map((a) => stored(a)), sample).length, 1);
+  eq("a renamed instrument drifts", drift({ name: "Renamed Plc" }).length, 1);
+  eq("a corrected provider symbol drifts", drift({ sourceSymbol: "NEW.SYM" }).length, 1);
+  eq("a re-pointed provider drifts", drift({ source: "somewhere-else" }).length, 1);
+  eq("a re-ranked asset drifts", drift({ rank: 999 }).length, 1);
+  eq("a changed currency drifts", drift({ currency: "ZZZ" }).length, 1);
+  eq(
+    "a changed kind drifts",
+    drift({ kind: sample[0].kind === "stock" ? "index" : "stock" }).length,
+    1,
+  );
+  eq("a seeded asset that lost its benchmark flag drifts", drift({ benchmark: false }).length, 1);
+  eq("and it is the drifted entry that comes back", drift({ name: "Renamed Plc" })[0].id, sample[0].id);
 }
 
 /* ---------------------------------------------------------- performance */

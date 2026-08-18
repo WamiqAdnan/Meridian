@@ -6,10 +6,12 @@
  * total-market aggregates. Crypto's most-quoted numbers are cap-weighted, so it
  * wins for this market.
  *
- * Budget: the free Demo tier allows ~10k calls/month at 100/min. Quotes for the
+ * Budget: the free Demo tier allows ~10k calls/month, throttles well below its
+ * documented 100/min, and serves at most 365 days of history. Quotes for the
  * whole tracked universe cost ONE call (`/coins/markets` is batched); history
  * costs one call per coin, which is why the frequent refresh runs with
- * range `"none"` and only the daily backfill asks for bars.
+ * range `"none"` and only the daily backfill asks for bars — and why a request
+ * beyond the tier's window is declined here rather than attempted.
  *
  * Setting COINGECKO_API_KEY switches to the authenticated Demo host, which is
  * the same data with a higher, per-key allowance. Without it, the public host is
@@ -36,6 +38,12 @@ const TIMEOUT_MS = 20_000;
  */
 const CONCURRENCY = 1;
 const PAUSE_MS = 1_500;
+/**
+ * How far back the public and demo tiers will serve daily history. Asking for
+ * more is refused outright (error 10012, "Your request exceeds the allowed time
+ * range") — verified against the live API, not inferred from the docs.
+ */
+const MAX_FREE_HISTORY_DAYS = 365;
 const KEYED_PAUSE_MS = 250;
 const MAX_RETRIES = 3;
 
@@ -188,6 +196,26 @@ export const coinGeckoProvider: MarketDataProvider = {
     }
 
     const days = RANGE_DAYS[range];
+    const isPro = process.env.COINGECKO_PLAN === "pro";
+
+    // Beyond the tier's window there is nothing to gain by asking: the call is
+    // refused, and each refusal costs a slow round trip. Declaring history
+    // unavailable hands the asset to the registry's fallback, which re-fetches it
+    // whole from Yahoo — so a long backfill takes quote *and* bars from one
+    // source, and the quote can never disagree with its own last bar.
+    //
+    // CoinGecko still earns its place on the frequent path: a quote-only refresh
+    // prices the entire crypto universe in one batched call, where Yahoo needs
+    // one request per coin.
+    if (!isPro && days > MAX_FREE_HISTORY_DAYS) {
+      return assets.map((a) => ({
+        assetId: a.id,
+        quote: quotes.get(a.id) ?? null,
+        bars: [],
+        error: `CoinGecko's free tier serves at most ${MAX_FREE_HISTORY_DAYS} days of history; ${days} were requested.`,
+      }));
+    }
+
     const pause = process.env.COINGECKO_API_KEY ? KEYED_PAUSE_MS : PAUSE_MS;
     let first = true;
 

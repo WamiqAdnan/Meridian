@@ -15,7 +15,7 @@ import InvestorSwitcher from "@/components/InvestorSwitcher";
 import RefreshMarketsButton from "@/components/markets/RefreshMarketsButton";
 import { INVESTORS, toOwnerFilter } from "@/lib/investors";
 import { listKnownParsers } from "@/lib/broker-profiles";
-import { learningBackendLabel } from "@/lib/broker-learn";
+import { aiBackendLabel } from "@/lib/ai";
 import { DEFAULT_BASE_CURRENCY } from "@/lib/portfolio";
 
 export const runtime = "nodejs";
@@ -190,7 +190,7 @@ export default async function DashboardPage({
         <aside className="space-y-6">
           <div>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Import</h2>
-            <UploadCard defaultOwner={owner ?? INVESTORS[0]} learningBackend={learningBackendLabel()} />
+            <UploadCard defaultOwner={owner ?? INVESTORS[0]} learningBackend={aiBackendLabel()} />
             {parsers.length > 0 && (
               <p className="mt-2 text-xs text-muted">
                 <span className="font-medium">Brokers we can read:</span>{" "}

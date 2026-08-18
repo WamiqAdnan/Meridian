@@ -37,6 +37,15 @@ lookup is decided by how unusual their latest session was *against their own
 volatility*, not by a fixed percentage — so a 0.02% day on a pegged currency can
 qualify while a 4% day in crypto does not.
 
+**AI insights** — a weekly, per-market explanation of what moved and what the
+retrieved headlines suggest about it. The price data decides what needs
+explaining before any model is involved; the model only ever sees that list and
+the headlines matched against it; and every answer is validated against both
+before it is stored — every citation has to resolve to an article it was given,
+and every percentage in its prose has to be a figure it was handed. Facts and
+inferences are stored and displayed separately, and *"insufficient data to
+determine"* is treated as a correct answer rather than a failure.
+
 **Index replicator** — turn a cash amount and a chosen index into a whole-share
 buy list matching the published weights, with real broker fees modelled.
 
@@ -109,6 +118,43 @@ npm run news:refresh -- --assets=psx:LUCK,crypto:BTC --no-markets
 npm run news:refresh -- --prune=60      # drop anything older than 60 days
 ```
 
+### Generating weekly insights
+
+```bash
+npm run insights:generate
+```
+
+One insight per market per week, cached hard on that key. Unlike prices and news,
+this never runs on a page render: a generation is up to three model calls and can
+take minutes against a local model, while the answer is the same all week. It
+arrives from this script, from a scheduled run, or from the button on a market
+page.
+
+```bash
+npm run insights:generate -- --market=commodities
+npm run insights:generate -- --dry-run            # print the brief, call no model
+npm run insights:generate -- --force              # regenerate this week
+npm run insights:generate -- --show-rejections    # print what failed validation
+npm run insights:generate -- --week=2026-08-10
+npm run insights:generate -- --prune=26           # drop insights older than 26 weeks
+```
+
+**Reach for `--dry-run` first.** It prints exactly what the model would read — the
+unusual moves in units of each asset's own volatility, every headline retrieved,
+and how each headline came to be attached to an asset — without spending a call.
+Almost every bad insight is a bad brief, and that is where you see it.
+
+**An insight needs something to explain.** A market where nothing moved unusually
+against its own volatility is skipped, however much was written about it that week.
+That is not a token-saving rule: a movement is what anchors the whole layer — the
+fact a claim gets checked against, the thing a citation has to bear on, the reason a
+figure is quotable — and without one the model is left summarising headlines with
+nothing to tie them to. Asked to do exactly that, `qwen3:8b` invented twenty
+movements, one per headline. The validator caught all twenty; the design was wrong.
+
+Run `market:refresh` and `news:refresh` first. With no daily bars nothing can be
+called unusual at all, and the run has nothing to do.
+
 ---
 
 ## Environment
@@ -118,18 +164,23 @@ Everything is optional except `DATABASE_URL`.
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | **Required.** SQLite path, e.g. `file:./dev.db` |
-| `ANTHROPIC_API_KEY` | Learn a parser for an unrecognised broker via the Anthropic API |
-| `LEARNING_BASE_URL` | An OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp, vLLM). **Wins over the Anthropic key.** e.g. `http://localhost:11434/v1` |
-| `LEARNING_MODEL` | Model name for whichever backend is in use |
-| `LEARNING_API_KEY` | Bearer token, if the endpoint needs one |
-| `LEARNING_TIMEOUT_MS` | Cap on one attempt (default 600000 — local reasoning models are slow) |
-| `LEARNING_REASONING_EFFORT` | Set `none` to trade spec quality for speed |
+| `ANTHROPIC_API_KEY` | Run the model-backed features via the Anthropic API |
+| `AI_BASE_URL` | An OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp, vLLM). **Wins over the Anthropic key.** e.g. `http://localhost:11434/v1` |
+| `AI_MODEL` | Model name for whichever backend is in use |
+| `AI_API_KEY` | Bearer token, if the endpoint needs one |
+| `AI_TIMEOUT_MS` | Cap on one attempt (default 600000 — local reasoning models are slow) |
+| `AI_REASONING_EFFORT` | Set `none` to trade answer quality for speed |
+
+One backend serves both model-backed features: learning a parser for an unknown
+broker, and writing the weekly insights. The `LEARNING_*` spelling of each `AI_*`
+variable above is still read, so an existing `.env` keeps working; `AI_*` wins
+where both are set.
 | `COINGECKO_API_KEY` | Raises the crypto rate limit. Without it the keyless tier is used |
 | `COINGECKO_PLAN` | `pro` to use the pro host; otherwise the demo key path is used |
 
 Nothing in the browser ever sees a key — every provider call is server-side.
 
-### Running the parser learning locally
+### Running the model locally
 
 ```bash
 ollama serve
@@ -137,14 +188,20 @@ ollama pull qwen3:8b
 ```
 
 ```bash
-LEARNING_BASE_URL=http://localhost:11434/v1
-LEARNING_MODEL=qwen3:8b
+AI_BASE_URL=http://localhost:11434/v1
+AI_MODEL=qwen3:8b
 ```
 
 Ollama defaults to a 4096-token context, which truncates a statement sample —
-start the server with `OLLAMA_CONTEXT_LENGTH=32768`. With a local model, the
-statement never leaves the machine, which for a financial document is the more
-interesting property of the two backends.
+start the server with `OLLAMA_CONTEXT_LENGTH=32768`. With a local model, nothing
+leaves the machine: not the statement, and not the holdings the insights are
+about. For a financial document that is the more interesting property of the two
+backends.
+
+Both features are built to be survivable on an 8B model, which is why the answer
+is always a small schema-constrained object validated locally and repaired with
+the specific failures rather than a reroll. On `qwen3:8b`, one market's insight
+takes a couple of minutes and typically needs one repair.
 
 ---
 
@@ -216,6 +273,21 @@ src/lib/news/
   ingest.ts       the ingest job, with a NewsRun audit row
   view.ts         day-grouping for the pages
 
+src/lib/ai/
+  types.ts        vocabulary: the provider interface, one method, JSON in and out
+  provider.ts     backend selection: Anthropic, or any OpenAI-compatible server
+  json.ts         pure: getting JSON out of an answer wrapped in prose or a fence
+  task.ts         the ask-validate-repair loop every model call in the app shares
+
+src/lib/insights/
+  types.ts        vocabulary: facts, inferences, verdicts, the stored record
+  evidence.ts     pure: assembles the numbered brief, and renders it for the model
+  prompt.ts       pure: the system prompt and how a rejection is explained back
+  schema.ts       pure: the response schema, and the validator that decides honesty
+  generate.ts     the pipeline — the one module here that touches Prisma
+  store.ts        the only place insights touch Prisma
+  view.ts         what the pages show (read-only; never generates)
+
 src/lib/
   holdings.ts       pure: replays the ledger into positions (asset-class agnostic)
   ledger.ts         pure: asset resolution + manual-trade validation
@@ -237,6 +309,19 @@ are different instruments; keying by symbol would silently merge them. Rows
 imported before markets existed carry no `assetId` and resolve to `psx:{SYMBOL}`,
 which is the only market whose currency can be safely inferred.
 
+**A fact and an inference are never the same field.** A movement's size, its
+deviation from the asset's own norm and its close are computed here from stored
+bars and are true. What a headline suggests about it is a model's reading and is
+not. They are separate fields in the stored record, rendered in separate blocks on
+the page, and the validator refuses an answer that quotes a percentage it was not
+given — because a plausible invented figure is the failure a reader cannot catch.
+
+**How an article was matched decides how confident an insight may be.** A story a
+publisher filed against an instrument can support a confident claim; a headline
+that merely contains a hand-written synonym for it cannot, however apt it reads.
+That is what `NewsMatch.via` is carried through the whole pipeline for, and the
+validator rejects a high-confidence claim resting on a text match alone.
+
 **Two currencies are on screen at once, on purpose.** A position is priced and
 costed in its own currency — rounding a US holding into rupees to display it
 would misstate what you own — while every *total* is converted, because a sum
@@ -247,23 +332,33 @@ named in a warning rather than dropped from the total.
 
 ## Testing
 
-No test runner. Four standalone check scripts, each deterministic and each
+No test runner. Six standalone check scripts, each deterministic and each
 runnable on its own:
 
 ```bash
-npm run check:parse       # statement parser: spec engine, validator, learning schema
+npm run check:parse       # statement parser: spec engine, validator, learning loop
 npm run check:replicator  # index replicator: fees, allocation, edge cases
 npm run check:market      # markets: performance, movers, currency, providers, registry
 npm run check:news        # news: RSS parsing, terms, relevance, providers, registry
 npm run check:portfolio   # portfolio: asset resolution, manual entry, the engine
+npm run check:insights    # AI layer + insights: weeks, evidence, prompt, validator
 ```
 
-`check:market`, `check:news` and `check:portfolio` run with no network and no
-database — payload parsing is exercised against captured payloads in
+`check:market`, `check:news`, `check:portfolio` and `check:insights` run with no
+network and no database — payload parsing is exercised against captured payloads in
 `data/reference/market/` and `data/reference/news/`, and both registries are
 driven with stub providers to prove routing, merging and containment of a
 provider that throws. `check:news` passes every date in explicitly, so it gives
 the same answer next year as it does today.
+
+**The model calls are tested; the prose is not.** `check:parse` and
+`check:insights` drive the whole ask-validate-repair loop with scripted stub
+providers, so what gets asserted is the boundary around the model — that a
+rejection carries the specific failure back rather than a shrug, that three bad
+answers store nothing, that a citation resolves to an article we supplied, that a
+figure was one we handed over, and that a confident claim rests on provenance.
+Whether the prose reads well is not testable, and pretending otherwise would be
+theatre.
 
 ---
 

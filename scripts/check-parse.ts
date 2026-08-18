@@ -20,7 +20,8 @@ import {
   type BrokerParseSpec,
 } from "@/lib/broker-spec";
 import { FINQALAB_SPEC } from "@/lib/builtin-brokers";
-import { SPEC_SCHEMA, specFromDraft, type SpecDraft } from "@/lib/broker-learn";
+import { SPEC_SCHEMA, learnParser, specFromDraft, type SpecDraft } from "@/lib/broker-learn";
+import { StructuredTaskError, type AiProvider, type StructuredRequest } from "@/lib/ai";
 import { extractStatementText, fingerprintLayout, sampleForLearning } from "@/lib/statement-text";
 
 let failures = 0;
@@ -253,6 +254,37 @@ const OTHER_SPEC: BrokerParseSpec = {
   ignorePatterns: ["^Sub Total\\b"],
 };
 
+/**
+ * A stand-in for what the model returns, in exactly the shape SPEC_SCHEMA
+ * describes — the arrays-of-pairs and nulls that `specFromDraft` has to fold.
+ */
+const OTHER_DRAFT: SpecDraft = {
+  broker: "Sunrise Securities",
+  rowPattern: OTHER_SPEC.rowPattern,
+  dateFormat: "dmy",
+  decimalSeparator: ".",
+  sideRule: {
+    type: "map",
+    group: "sideToken",
+    map: [
+      { token: "B", side: "BUY" },
+      { token: "S", side: "SELL" },
+    ],
+    value: null,
+    buyGroup: null,
+    sellGroup: null,
+  },
+  qtyGroup: "qty",
+  rateGroup: "rate",
+  grossGroup: "gross",
+  netGroup: "net",
+  brokerageGroups: ["comm"],
+  cvtGroups: ["cvt"],
+  metadata: OTHER_SPEC.metadata,
+  ignorePatterns: ["^Sub Total\\b"],
+  notes: "Fixed-width columns; the Ref column is often blank.",
+};
+
 function checkForeignLayout() {
   section("A foreign layout, read by spec alone");
 
@@ -400,35 +432,7 @@ function checkLearningContract(finqalabText: string) {
   walk(SPEC_SCHEMA, "schema");
   ok("the response schema stays within structured outputs' subset", problems.length === 0, problems.join("; "));
 
-  // A stand-in for what the model returns, in exactly the shape SPEC_SCHEMA
-  // describes — the arrays-of-pairs and nulls that `specFromDraft` has to fold.
-  const draft: SpecDraft = {
-    broker: "Sunrise Securities",
-    rowPattern: OTHER_SPEC.rowPattern,
-    dateFormat: "dmy",
-    decimalSeparator: ".",
-    sideRule: {
-      type: "map",
-      group: "sideToken",
-      map: [
-        { token: "B", side: "BUY" },
-        { token: "S", side: "SELL" },
-      ],
-      value: null,
-      buyGroup: null,
-      sellGroup: null,
-    },
-    qtyGroup: "qty",
-    rateGroup: "rate",
-    grossGroup: "gross",
-    netGroup: "net",
-    brokerageGroups: ["comm"],
-    cvtGroups: ["cvt"],
-    metadata: OTHER_SPEC.metadata,
-    ignorePatterns: ["^Sub Total\\b"],
-    notes: "Fixed-width columns; the Ref column is often blank.",
-  };
-
+  const draft = OTHER_DRAFT;
   const converted = specFromDraft(draft);
   const run = runSpec(OTHER_STATEMENT, converted);
   ok("a model-shaped answer converts and validates", validateRun(run, converted).ok);
@@ -449,6 +453,101 @@ function checkLearningContract(finqalabText: string) {
   ok("…and still contains the header", sample.includes("Client Name:"));
 }
 
+
+/**
+ * The ask-validate-repair loop itself, driven offline.
+ *
+ * `learnParser` now sits on the shared machinery in `src/lib/ai/`, so this is
+ * where the wiring between the two is pinned: that a spec is only accepted once it
+ * has been run over the whole statement, that a rejection carries the specific
+ * failure back to the model rather than a shrug, and that three bad answers refuse
+ * the import instead of half-reading it.
+ *
+ * The provider is a stub returning canned answers in order — no network, no model.
+ */
+function scriptedProvider(answers: string[]): { provider: AiProvider; asks: StructuredRequest[] } {
+  const asks: StructuredRequest[] = [];
+  return {
+    asks,
+    provider: {
+      label: "scripted",
+      async complete(request) {
+        asks.push(request);
+        // Past the end, keep repeating the last answer — a model that has stopped
+        // improving, which is the case the attempt cap exists for.
+        return answers[Math.min(asks.length - 1, answers.length - 1)];
+      },
+    },
+  };
+}
+
+async function checkLearningLoop() {
+  section("Learning a parser (the loop)");
+
+  const good = JSON.stringify(OTHER_DRAFT);
+  // Right shape, wrong pattern: it parses into a valid spec and then reads nothing.
+  const readsNothing = JSON.stringify({
+    ...OTHER_DRAFT,
+    rowPattern: OTHER_SPEC.rowPattern.replace("[A-Z][A-Z0-9]*", "ZZZZ"),
+  });
+
+  const first = scriptedProvider([good]);
+  const learned = await learnParser(OTHER_STATEMENT, { provider: first.provider });
+  eq("a spec that validates is accepted on the first attempt", learned.attempts, 1);
+  eq("…and comes back with the trades it read", learned.result.trades.length, 3);
+  eq("…credited to the backend that wrote it", learned.model, "scripted");
+  eq("…asking only once", first.asks.length, 1);
+  eq("…under the schema the backend needs named", first.asks[0].schemaName, "broker_parse_spec");
+
+  const rejections: { attempt: number; pattern: string | null; errors: string[] }[] = [];
+  const second = scriptedProvider([readsNothing, good]);
+  const repaired = await learnParser(OTHER_STATEMENT, {
+    provider: second.provider,
+    onRejected: ({ attempt, spec, errors }) =>
+      rejections.push({ attempt, pattern: spec?.rowPattern ?? null, errors }),
+  });
+  eq("a spec that reads nothing is rejected and retried", repaired.attempts, 2);
+  eq("…reporting the rejection once", rejections.length, 1);
+  ok("…with the spec that failed, not just the complaint", rejections[0].pattern?.includes("ZZZZ") === true);
+
+  // The repair turn is the whole reason this beats re-asking blind.
+  const repairTurn = second.asks[1].turns.at(-1)?.text ?? "";
+  ok("…and the retry carries the failure back verbatim", repairTurn.includes("rejected"));
+  ok("…naming a line the pattern missed", repairTurn.includes("OGDC"));
+  eq("…as a third turn, so the model sees its own answer", second.asks[1].turns.length, 3);
+
+  // A draft that cannot even become a spec is a different failure, and is caught
+  // before anything runs over the statement.
+  const malformed = JSON.stringify({ ...OTHER_DRAFT, rateGroup: "nosuchgroup" });
+  const third = scriptedProvider([malformed, good]);
+  const recovered = await learnParser(OTHER_STATEMENT, { provider: third.provider });
+  eq("an unusable draft is rejected before it runs", recovered.attempts, 2);
+  ok(
+    "…and is told why it never ran",
+    (third.asks[1].turns.at(-1)?.text ?? "").includes("before it could run"),
+  );
+
+  // Prose around the JSON is what small local models actually do.
+  const wrapped = scriptedProvider(["Here is the spec you asked for:\n```json\n" + good + "\n```"]);
+  const unwrapped = await learnParser(OTHER_STATEMENT, { provider: wrapped.provider });
+  eq("a fenced answer is still read", unwrapped.result.trades.length, 3);
+
+  const hopeless = scriptedProvider([readsNothing]);
+  let refused: unknown = null;
+  try {
+    await learnParser(OTHER_STATEMENT, { provider: hopeless.provider });
+  } catch (e) {
+    refused = e;
+  }
+  ok("three bad answers refuse the import", refused instanceof StructuredTaskError);
+  eq("…after exactly three attempts", (refused as StructuredTaskError)?.attempts, 3);
+  eq("…having asked three times", hopeless.asks.length, 3);
+  ok(
+    "…and never returns a half-read spec",
+    refused instanceof Error && refused.message.includes("Last problem"),
+  );
+}
+
 async function main() {
   checkScalars();
 
@@ -462,6 +561,7 @@ async function main() {
   checkForeignLayout();
   checkDiagnosis();
   checkLearningContract(text);
+  await checkLearningLoop();
 
   console.log(`\n${failures === 0 ? "PASS" : "FAIL"} — ${checks - failures}/${checks} checks passed.`);
   process.exit(failures === 0 ? 0 : 1);

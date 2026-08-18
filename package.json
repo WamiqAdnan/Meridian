@@ -16,8 +16,10 @@
     "market:refresh": "tsx scripts/refresh-market.ts",
     "market:backfill": "tsx scripts/refresh-market.ts --history",
     "news:refresh": "tsx scripts/refresh-news.ts",
+    "insights:generate": "tsx scripts/generate-insights.ts",
     "check:market": "tsx scripts/check-market.ts",
     "check:news": "tsx scripts/check-news.ts",
+    "check:insights": "tsx scripts/check-insights.ts",
     "check:portfolio": "tsx scripts/check-portfolio.ts"
   },
   "dependencies": {

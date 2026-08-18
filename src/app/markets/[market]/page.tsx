@@ -14,6 +14,9 @@ import RefreshMarketsButton from "@/components/markets/RefreshMarketsButton";
 import NewsList from "@/components/news/NewsList";
 import { ingestIfStale } from "@/lib/news/ingest";
 import { loadNewsFeed } from "@/lib/news/view";
+import InsightCard from "@/components/insights/InsightCard";
+import GenerateInsightButton from "@/components/insights/GenerateInsightButton";
+import { loadInsightPanel } from "@/lib/insights/view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +66,9 @@ export default async function MarketPage({
   const movers = topMovers(assets, (a) => a.performance, period, 5);
   const updated = newestFetch(assets);
   const news = await loadNewsFeed({ market: market as Market, limit: 8 });
+  // Read-only, unlike prices and news above: generating an insight is a model
+  // call that can run for minutes, so it never happens on a render.
+  const insight = await loadInsightPanel(market as Market);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
@@ -120,6 +126,33 @@ export default async function MarketPage({
           </div>
         </section>
       )}
+
+      <section aria-labelledby="insight-heading" className="mb-8">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2
+            id="insight-heading"
+            className="text-sm font-semibold uppercase tracking-wide text-muted"
+          >
+            AI insight
+          </h2>
+          <GenerateInsightButton
+            market={market}
+            backend={insight.backend}
+            hasInsight={insight.insight != null}
+          />
+        </div>
+        {insight.insight ? (
+          <InsightCard insight={insight.insight} stale={insight.stale} market={market} />
+        ) : (
+          <p className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-sm text-muted">
+            No insight for {meta.label.toLowerCase()} yet. Generating one takes this
+            week’s unusual moves — assets that did something far from their own norm — and
+            the headlines retrieved against them, and says what those headlines suggest,
+            keeping what the price data says apart from what a model inferred. A week in
+            which nothing moved unusually has nothing to explain, and is skipped.
+          </p>
+        )}
+      </section>
 
       {news.length > 0 && (
         <section aria-labelledby="market-news" className="mb-8">

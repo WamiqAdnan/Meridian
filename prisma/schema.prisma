@@ -247,3 +247,33 @@ model NewsRun {
 
   @@index([scope, startedAt])
 }
+
+/// A week's AI-written explanation of what moved in one market, and why the
+/// retrieved headlines suggest it did.
+///
+/// Disposable like the market data and news it is built from — regenerating costs
+/// one model call — but cached hard on (market, weekStart) because that call can
+/// take minutes against a local model, and a page render must never pay for it.
+///
+/// The row keeps two things apart on purpose. `body` holds the *facts* (computed
+/// here from daily closes, never written by the model) alongside the model's
+/// *inferences* about them, in separate fields, so the UI can label which is which.
+/// It also snapshots every headline cited: news is pruned after ninety days and an
+/// insight has to stay auditable after its sources are gone.
+model MarketInsight {
+  market      String
+  /// Monday of the week covered, yyyy-mm-dd (sorts chronologically as text).
+  weekStart   String
+  generatedAt DateTime @default(now())
+  /// Which backend wrote it — "qwen3:8b (localhost:11434)", "claude-opus-5".
+  model       String
+  /// ok | insufficient — whether the headlines explained anything at all.
+  status      String
+  /// Denormalised out of `body` so the overview can list insights without parsing it.
+  headline    String
+  /// The whole insight as JSON. See InsightBody in src/lib/insights/types.ts.
+  body        String
+
+  @@id([market, weekStart])
+  @@index([weekStart])
+}

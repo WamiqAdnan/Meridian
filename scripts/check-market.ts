@@ -45,6 +45,7 @@ import { parseMarketChart, parseMarketsPayload } from "@/lib/markets/providers/c
 import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter";
 import { quoteFromBars, mapWithConcurrency } from "@/lib/markets/providers/shared";
 import { candidateProviders, fetchAssets } from "@/lib/markets/registry";
+import { adoptAsset } from "@/lib/markets/adopt";
 import { CATALOGUE } from "@/lib/markets/catalogue";
 import { catalogueDrift, daysBefore, type StoredDescription } from "@/lib/markets/store";
 
@@ -946,8 +947,78 @@ async function checkConcurrency() {
 
 /* ------------------------------------------------------------------ run */
 
+function checkAdopt() {
+  section("Adopting a user-added asset");
+
+  // `POST /api/assets` is the only writer to the Asset table that is not the
+  // hand-verified catalogue, so it is the only place these columns can go wrong.
+  const good = adoptAsset({ market: "stocks", symbol: "ORCL", name: "Oracle" });
+  ok("a plain equity is accepted", good.ok);
+  if (good.ok) {
+    eq("id is market-qualified", good.ref.id, "stocks:ORCL");
+    eq("kind falls back to the market default", good.ref.kind, "stock");
+    eq("currency falls back to the market default", good.ref.currency, "USD");
+    eq("source falls back to the market default", good.ref.source, "yahoo");
+    eq("a plain ticker is its own Yahoo symbol", good.ref.sourceSymbol, "ORCL");
+    eq("a held asset is not a benchmark", good.ref.benchmark, false);
+  }
+
+  const coin = adoptAsset({ market: "crypto", symbol: "matic" });
+  eq("a coin gets Yahoo's pair form", coin.ok && coin.ref.sourceSymbol, "MATIC-USD");
+  eq("a lowercase ticker is upper-cased", coin.ok && coin.ref.symbol, "MATIC");
+  eq("name defaults to the ticker", coin.ok && coin.ref.name, "MATIC");
+
+  const pair = adoptAsset({ market: "forex", symbol: "USDSAR" });
+  eq("a USD-base pair gets Yahoo's short form", pair.ok && pair.ref.sourceSymbol, "SAR=X");
+
+  const explicit = adoptAsset({ market: "forex", symbol: "USDSAR", sourceSymbol: "USDSAR=X" });
+  eq("an explicit sourceSymbol wins over the guess", explicit.ok && explicit.ref.sourceSymbol, "USDSAR=X");
+
+  // Rejections. Each of these used to be written down verbatim and discovered
+  // later as a wrong number, a mis-formatted price, or a dead provider route.
+  const badKind = adoptAsset({ market: "stocks", symbol: "PLTR", kind: "not-a-kind" });
+  ok("an unknown kind is refused", !badKind.ok);
+  ok(
+    "the refusal names the kinds that exist",
+    !badKind.ok && badKind.error.includes("bond_yield"),
+    !badKind.ok ? badKind.error : undefined,
+  );
+  ok(
+    "a known kind the market did not default to is still allowed",
+    adoptAsset({ market: "stocks", symbol: "SPY", kind: "etf" }).ok,
+  );
+
+  const badCurrency = adoptAsset({ market: "crypto", symbol: "SHIB", currency: "BOGUS" });
+  ok("a currency that is not a code is refused", !badCurrency.ok);
+  ok("the notional codes are still codes", adoptAsset({ market: "indices", symbol: "SPX" }).ok);
+  eq(
+    "a lowercase currency is accepted and upper-cased",
+    (() => { const r = adoptAsset({ market: "stocks", symbol: "ORCL", currency: "eur" }); return r.ok && r.ref.currency; })(),
+    "EUR",
+  );
+
+  const badSource = adoptAsset({ market: "stocks", symbol: "SNOW", source: "made-up" });
+  ok("an unregistered source is refused", !badSource.ok);
+  ok(
+    "the refusal lists the providers that exist",
+    !badSource.ok && badSource.error.includes("frankfurter"),
+    !badSource.ok ? badSource.error : undefined,
+  );
+  ok(
+    "the registry is injectable, so the check does not depend on the real one",
+    !adoptAsset({ market: "stocks", symbol: "ORCL" }, [stubProvider("alpha", priced)]).ok,
+  );
+
+  ok("an unknown market is refused", !adoptAsset({ market: "tulips", symbol: "X" }).ok);
+  ok("a missing ticker is refused", !adoptAsset({ market: "stocks" }).ok);
+  ok("a non-string ticker is refused", !adoptAsset({ market: "stocks", symbol: 42 }).ok);
+  ok("a ticker of punctuation is refused", !adoptAsset({ market: "stocks", symbol: "!!!" }).ok);
+
+}
+
 async function main() {
   checkTaxonomy();
+  checkAdopt();
   checkPerformance();
   checkChart();
   checkMovers();

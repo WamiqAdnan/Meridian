@@ -116,6 +116,10 @@ export const ASSET_KINDS = [
 
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
+export function isAssetKind(v: unknown): v is AssetKind {
+  return typeof v === "string" && (ASSET_KINDS as readonly string[]).includes(v);
+}
+
 /** Kinds whose "price" is a level or a percentage, never an amount of money. */
 export function isNotional(kind: AssetKind): boolean {
   return kind === "index" || kind === "bond_yield";

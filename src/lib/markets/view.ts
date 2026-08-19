@@ -52,17 +52,31 @@ function median(values: number[]): number | null {
 }
 
 /**
+ * Every asset a page needs, plus the table that converts between their currencies.
+ *
+ * Named because it is passed around: a page that renders both the markets and the
+ * portfolio loads this once and hands the same value to both, so the two halves
+ * describe one moment rather than two. See `loadPortfolio`.
+ */
+export interface AssetSnapshot {
+  assets: AssetView[];
+  fx: FxTable;
+}
+
+/**
  * Load every tracked asset with its performance, plus the FX table.
  *
  * One pass over the database for all markets — cheaper than per-market queries
  * and it is what makes cross-market movers possible.
+ *
+ * Not cheap, though: `HISTORY_DAYS` of bars for every asset is ~31k rows on the
+ * current database, followed by a full pass of performance maths. Load it once
+ * per render and share the result rather than calling it again — that is what
+ * `AssetSnapshot` exists for.
  */
 export async function loadAssetViews(
   options: { market?: Market; asOf?: string } = {},
-): Promise<{
-  assets: AssetView[];
-  fx: FxTable;
-}> {
+): Promise<AssetSnapshot> {
   const rows = await listAssetsWithQuotes();
   // `asOf` reads the market as it stood at the close of a past day: the bar
   // window shifts back with it, and `computePerformance` anchors on the last bar

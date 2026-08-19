@@ -61,12 +61,20 @@ export default async function OverviewPage({
   await refreshIfStale();
   await ingestIfStale();
 
-  const [portfolio, { assets }, news, digest] = await Promise.all([
-    loadPortfolio({ owner, baseCurrency: base }),
+  // One asset snapshot for the whole page. This used to sit inside the
+  // `Promise.all` below alongside `loadPortfolio`, which loads assets itself —
+  // so every render read ~31k `PriceBar` rows and ran the performance maths
+  // twice, and the cards and the holdings could in principle be priced from two
+  // different moments. Handing the same snapshot to `loadPortfolio` fixes both.
+  const [views, news, digest] = await Promise.all([
     loadAssetViews(),
     loadNewsFeed({ limit: 6 }),
     loadInsightDigest(),
   ]);
+  const { assets } = views;
+  // Waits on the snapshot by construction; the trade query it still runs is 64
+  // rows, which is not worth the contortion of overlapping it with the load.
+  const portfolio = await loadPortfolio({ owner, baseCurrency: base, views });
 
   const { positions, totals, byAsset, best, worst, warnings, pricesFetchedAt } = portfolio;
   const marketViews = buildMarketViews(assets, period);

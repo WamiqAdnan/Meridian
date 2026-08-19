@@ -7,7 +7,7 @@
  * must agree on what a price is, and they do so by reading it the same way.
  */
 import { prisma } from "./db";
-import { loadAssetViews } from "./markets/view";
+import { loadAssetViews, type AssetSnapshot } from "./markets/view";
 import { newestFetch } from "./markets/view";
 import {
   buildPortfolio,
@@ -21,6 +21,22 @@ export interface LoadPortfolioOptions {
   /** A single investor's book, or null/undefined for the combined view. */
   owner?: string | null;
   baseCurrency?: string;
+  /**
+   * Assets and FX the caller has already loaded, reused instead of read again.
+   *
+   * A page that shows the markets *and* the book would otherwise pay for
+   * `loadAssetViews` twice — once here, once for its own cards — and that is
+   * ~31k `PriceBar` rows and a full pass of performance maths each time. The
+   * overview did exactly that on every render.
+   *
+   * Sharing one snapshot is not only cheaper. It is the only thing that makes
+   * the two halves of such a page *agree*: a refresh landing between two loads
+   * would price the cards from one moment and the holdings from another, and
+   * nothing on the page would admit it. The module docstring above says the
+   * portfolio and the market pages must read a price the same way — this is
+   * what makes them read it at the same time as well.
+   */
+  views?: AssetSnapshot;
 }
 
 export interface LoadedPortfolio extends Portfolio {
@@ -33,7 +49,7 @@ export async function loadPortfolio(
 ): Promise<LoadedPortfolio> {
   const [trades, { assets, fx }] = await Promise.all([
     prisma.transaction.findMany(options.owner ? { where: { owner: options.owner } } : undefined),
-    loadAssetViews(),
+    options.views ?? loadAssetViews(),
   ]);
 
   const portfolio = buildPortfolio(trades as PortfolioTrade[], {

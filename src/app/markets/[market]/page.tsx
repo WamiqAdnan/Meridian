@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { PERIOD_LABEL, PERIODS, topMovers, type Period } from "@/lib/markets/performance";
 import { buildMarketViews, loadAssetViews, marketMove, newestFetch } from "@/lib/markets/view";
 import { refreshIfStale } from "@/lib/markets/refresh";
-import { MARKET_META, MARKETS, isMarket, type Market } from "@/lib/markets/types";
+import { MARKET_META, isMarket, type Market } from "@/lib/markets/types";
 import { fmtAgo, fmtPrice } from "@/lib/format";
 import AssetTable from "@/components/markets/AssetTable";
 import Change from "@/components/markets/Change";
@@ -20,11 +20,6 @@ import { loadInsightPanel } from "@/lib/insights/view";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Pre-render the known markets; the set is fixed and small. */
-export function generateStaticParams() {
-  return MARKETS.map((market) => ({ market }));
-}
 
 export async function generateMetadata({
   params,

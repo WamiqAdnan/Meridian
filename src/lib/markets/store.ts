@@ -12,7 +12,6 @@ import { resolveAssetId } from "@/lib/ledger";
 import { CATALOGUE } from "./catalogue";
 import {
   assetId,
-  isMarket,
   parseAssetId,
   type AssetRef,
   type BarData,
@@ -432,9 +431,4 @@ export async function saveResults(results: ProviderQuoteResult[]): Promise<SaveS
 
   summary.barsWritten = await saveBars(allBars);
   return summary;
-}
-
-/** Normalize an untrusted `?market=` value. */
-export function toMarketFilter(v: unknown): Market | null {
-  return isMarket(v) ? v : null;
 }

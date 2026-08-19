@@ -96,6 +96,17 @@ export function isMarket(v: unknown): v is Market {
   return typeof v === "string" && (MARKETS as readonly string[]).includes(v);
 }
 
+/**
+ * Normalize an untrusted `?market=` value, or null for "every market".
+ *
+ * The market half of `toOwnerFilter`, and it belongs beside `isMarket` for the
+ * same reason that one lives beside `INVESTORS`: a page reading a query string
+ * should not have to import a database module to find out what a market is.
+ */
+export function toMarketFilter(v: unknown): Market | null {
+  return isMarket(v) ? v : null;
+}
+
 /* ------------------------------------------------------------------- assets */
 
 /**

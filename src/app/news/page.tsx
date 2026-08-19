@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ingestIfStale } from "@/lib/news/ingest";
 import { loadNewsFeed } from "@/lib/news/view";
-import { MARKET_META, MARKETS, isMarket, type Market } from "@/lib/markets/types";
+import { MARKET_META, MARKETS, toMarketFilter, type Market } from "@/lib/markets/types";
 import NewsList from "@/components/news/NewsList";
 import RefreshNewsButton from "@/components/news/RefreshNewsButton";
 
@@ -53,7 +53,7 @@ export default async function NewsPage({
   searchParams: Promise<{ market?: string }>;
 }) {
   const raw = (await searchParams).market;
-  const market = isMarket(raw) ? raw : null;
+  const market = toMarketFilter(raw);
 
   await ingestIfStale(market ? { market } : {});
   const items = await loadNewsFeed({ market: market ?? undefined, limit: 60 });

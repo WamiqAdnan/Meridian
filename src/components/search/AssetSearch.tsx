@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { fmtPrice } from "@/lib/format";
+import { searchHref } from "@/lib/routes";
 import type { SearchRow } from "@/lib/search/view";
 
 /**
@@ -207,7 +208,7 @@ export default function AssetSearch() {
                 ))}
               </ul>
               <Link
-                href={`/search?q=${encodeURIComponent(query.trim())}`}
+                href={searchHref(query.trim())}
                 onClick={() => setOpen(false)}
                 className="block border-t border-line px-3 py-2 text-xs text-muted hover:bg-surface-raised hover:text-foreground"
               >

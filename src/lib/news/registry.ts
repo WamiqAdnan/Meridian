@@ -28,13 +28,6 @@ import type { NewsArticle, NewsFetchResult, NewsProvider, NewsQuery } from "./ty
 /** Registration order is preference order when two providers return the same story. */
 export const NEWS_PROVIDERS: NewsProvider[] = [yahooNewsProvider, googleNewsProvider, cnbcProvider];
 
-export function newsProviderById(
-  id: string,
-  registry: NewsProvider[] = NEWS_PROVIDERS,
-): NewsProvider | undefined {
-  return registry.find((p) => p.id === id);
-}
-
 /**
  * The providers whose asset feeds count as provenance.
  *

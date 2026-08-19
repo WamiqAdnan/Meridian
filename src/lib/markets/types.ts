@@ -232,8 +232,8 @@ export interface ProviderQuoteResult {
  * Deliberately one combined `fetch` rather than the separate getQuote /
  * getHistoricalPrices pair you might expect: the endpoints that actually exist
  * return the snapshot and the daily series in the same response, so splitting
- * them would double the request count for no gain. `getQuotes`/`getHistory` in
- * `registry.ts` are thin conveniences over this.
+ * them would double the request count for no gain. `fetchAssets` in `registry.ts`
+ * is how it is called — with `"none"` as the range when only a quote is wanted.
  *
  * Note what is NOT here: market overviews and top movers. Those are computed from
  * stored bars by `performance.ts`, so they work identically for every provider —
@@ -249,14 +249,4 @@ export interface MarketDataProvider {
    * every input asset, using `error` to report the ones it could not price.
    */
   fetch(assets: AssetRef[], range: HistoryRange): Promise<ProviderQuoteResult[]>;
-}
-
-/** Thrown when a provider is reachable but answered with something unusable. */
-export class ProviderError extends Error {
-  constructor(
-    readonly providerId: string,
-    message: string,
-  ) {
-    super(`[${providerId}] ${message}`);
-  }
 }

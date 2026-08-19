@@ -161,13 +161,3 @@ export interface NewsMatch {
   score: number;
   via: MatchVia;
 }
-
-/** Thrown when a feed is reachable but answered with something unusable. */
-export class NewsProviderError extends Error {
-  constructor(
-    readonly providerId: string,
-    message: string,
-  ) {
-    super(`[${providerId}] ${message}`);
-  }
-}

@@ -26,13 +26,6 @@ export function fmtWeight(n: number | null | undefined): string {
   return `${n.toFixed(2)}%`;
 }
 
-/** "+Rs 1,234" / "-Rs 1,234" with sign, whole rupees. */
-export function fmtSignedRs(n: number | null | undefined): string {
-  if (n == null) return "—";
-  const s = n >= 0 ? "+" : "-";
-  return `${s}Rs ${pkr0.format(Math.abs(n))}`;
-}
-
 export function fmtQty(n: number): string {
   return pkr0.format(n);
 }

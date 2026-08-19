@@ -104,8 +104,3 @@ export function convert(
 export function rate(from: string, to: string, fx: FxTable): number | null {
   return convert(1, from, to, fx);
 }
-
-/** Currencies the table can convert between, sorted. */
-export function supportedCurrencies(fx: FxTable): string[] {
-  return [...fx.keys()].sort();
-}

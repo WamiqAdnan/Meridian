@@ -169,16 +169,3 @@ export async function fetchAssets(
       },
   );
 }
-
-/** Quotes only — skips history, which is what the frequent refresh wants. */
-export async function getQuotes(assets: AssetRef[]): Promise<ProviderQuoteResult[]> {
-  return fetchAssets(assets, "none");
-}
-
-/** Quotes plus daily bars over `range` — the daily backfill. */
-export async function getHistory(
-  assets: AssetRef[],
-  range: Exclude<HistoryRange, "none"> = "3mo",
-): Promise<ProviderQuoteResult[]> {
-  return fetchAssets(assets, range);
-}

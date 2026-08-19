@@ -93,13 +93,3 @@ export async function loadNewsFeed(options: NewsFeedOptions = {}): Promise<NewsI
     limit: options.limit,
   });
 }
-
-/** When we last pulled any of these in — the honest "updated" stamp for a page. */
-export function newestFetch(items: NewsItem[]): Date | null {
-  let newest: Date | null = null;
-  for (const item of items) {
-    const at = item.article.publishedAt;
-    if (!newest || at > newest) newest = at;
-  }
-  return newest;
-}

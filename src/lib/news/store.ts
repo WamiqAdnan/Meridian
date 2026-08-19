@@ -7,8 +7,7 @@
  * ledger.
  */
 import { prisma } from "@/lib/db";
-import type { AssetRef, Market } from "@/lib/markets/types";
-import { listAssets } from "@/lib/markets/store";
+import type { Market } from "@/lib/markets/types";
 import type { NewsArticle, NewsMatch, MatchVia } from "./types";
 
 /* ----------------------------------------------------------------- writing */
@@ -249,11 +248,6 @@ export async function newsForAsset(assetId: string, limit = 12): Promise<NewsIte
   return listNews({ assetIds: [assetId], limit });
 }
 
-/** Every tracked asset — what the matcher needs to run against. */
-export async function matchableAssets(): Promise<AssetRef[]> {
-  return listAssets();
-}
-
 /* ------------------------------------------------------------------ upkeep */
 
 /**
@@ -280,14 +274,4 @@ export async function lastNewsRun(): Promise<{
     orderBy: { startedAt: "desc" },
     select: { scope: true, finishedAt: true, articlesNew: true, queriesFail: true, error: true },
   });
-}
-
-/** The most recent article we hold, for staleness checks. */
-export async function newestArticleAt(market?: Market): Promise<Date | null> {
-  const row = await prisma.newsArticle.findFirst({
-    where: market ? { OR: [{ market }, { matches: { some: { asset: { market } } } }] } : undefined,
-    orderBy: { fetchedAt: "desc" },
-    select: { fetchedAt: true },
-  });
-  return row?.fetchedAt ?? null;
 }

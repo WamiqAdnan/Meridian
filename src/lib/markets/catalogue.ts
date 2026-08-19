@@ -232,10 +232,3 @@ export const CATALOGUE: AssetRef[] = [
   ...BONDS,
   ...REAL_ESTATE,
 ];
-
-/** Every asset the app knows how to convert currency with. */
-export const FX_ASSETS = FOREX.filter((a) => a.kind === "fx_pair");
-
-export function catalogueFor(market: Market): AssetRef[] {
-  return CATALOGUE.filter((a) => a.market === market);
-}

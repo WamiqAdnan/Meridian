@@ -49,6 +49,31 @@ export async function ensureCatalogue(): Promise<void> {
   await syncLedgerAssets();
 }
 
+/**
+ * Whether a scope's quotes are fresh enough to skip a refresh.
+ *
+ * Two conditions, and the second is the one that is easy to lose: the newest
+ * quote must be inside the window *and* every asset in scope must have one. An
+ * asset that has never been quoted is stale no matter how new the rest are, so
+ * `expected` has to be answered for a global call as well as a scoped one —
+ * otherwise one fresh quote vouches for every asset on the pages that ask for
+ * everything.
+ */
+export function quotesAreFresh(input: {
+  newestAt: Date | null;
+  /** How many assets in scope have a quote at all. */
+  quoted: number;
+  /** How many assets the refresh would cover. */
+  expected: number;
+  maxAgeMs: number;
+  now?: number;
+}): boolean {
+  const { newestAt, quoted, expected, maxAgeMs, now = Date.now() } = input;
+  if (!newestAt) return false;
+  if (now - newestAt.getTime() >= maxAgeMs) return false;
+  return quoted >= expected;
+}
+
 /** Assets a given refresh would touch — the set staleness should be judged over. */
 async function scopeIds(options: RefreshOptions): Promise<string[] | undefined> {
   if (options.ids) return options.ids;
@@ -125,17 +150,24 @@ export async function refreshIfStale(
     // Asking globally meant a fresh crypto quote suppressed an hour-stale PSX
     // refresh on /markets/psx.
     const ids = await scopeIds(options);
-    const [newest, quoted] = await Promise.all([
-      prisma.quote.findFirst({
-        where: ids ? { assetId: { in: ids } } : undefined,
-        orderBy: { fetchedAt: "desc" },
-        select: { fetchedAt: true },
-      }),
-      prisma.quote.count({ where: ids ? { assetId: { in: ids } } : undefined }),
+    const where = ids ? { assetId: { in: ids } } : undefined;
+    const [newest, quoted, expected] = await Promise.all([
+      prisma.quote.findFirst({ where, orderBy: { fetchedAt: "desc" }, select: { fetchedAt: true } }),
+      prisma.quote.count({ where }),
+      // An unscoped call has no id list to measure against, so ask how many
+      // assets a global refresh would cover. `listAssets` takes the same set.
+      ids ? Promise.resolve(ids.length) : prisma.asset.count({ where: { active: true } }),
     ]);
-    const fresh = newest && Date.now() - newest.fetchedAt.getTime() < maxAge;
-    // An asset that has never been quoted is stale no matter how new the rest are.
-    if (fresh && (!ids || quoted >= ids.length)) return;
+    if (
+      quotesAreFresh({
+        newestAt: newest?.fetchedAt ?? null,
+        quoted,
+        expected,
+        maxAgeMs: maxAge,
+      })
+    ) {
+      return;
+    }
     await refreshMarketData(options);
   } catch {
     // Offline, or an upstream is down. Whatever is cached still renders.

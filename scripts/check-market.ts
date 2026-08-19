@@ -47,6 +47,7 @@ import { parseMarketChart, parseMarketsPayload } from "@/lib/markets/providers/c
 import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter";
 import { quoteFromBars, mapWithConcurrency } from "@/lib/markets/providers/shared";
 import { candidateProviders, fetchAssets } from "@/lib/markets/registry";
+import { QUOTE_TTL_MS, quotesAreFresh } from "@/lib/markets/refresh";
 import { adoptAsset, normaliseSymbol } from "@/lib/markets/adopt";
 import {
   buildMarketViews,
@@ -519,6 +520,33 @@ function checkAxisPositions() {
   // `PriceChart` refuses to draw below two bars, but the function is total.
   eq("one bar is one label", axisLabels(1).length, 1);
   eq("no bars, no labels", axisLabels(0).length, 0);
+}
+
+/* ------------------------------------------------------------- freshness */
+
+function checkFreshness() {
+  section("Quote freshness");
+
+  const now = Date.parse("2026-08-19T12:00:00Z");
+  const recent = new Date(now - 60_000);
+  const stale = new Date(now - 10 * 60_000);
+  const fresh = (over: Partial<Parameters<typeof quotesAreFresh>[0]>) =>
+    quotesAreFresh({ newestAt: recent, quoted: 110, expected: 110, maxAgeMs: QUOTE_TTL_MS, now, ...over });
+
+  ok("a recent quote covering every asset is fresh", fresh({}));
+  ok("nothing quoted at all is never fresh", !fresh({ newestAt: null, quoted: 0 }));
+  ok("a quote past the window is stale", !fresh({ newestAt: stale }));
+  ok("exactly at the window is stale", !fresh({ newestAt: new Date(now - QUOTE_TTL_MS) }));
+
+  // The rule that was only being applied to scoped calls. Both of these are the
+  // same database a moment after one asset is added: 110 assets, 109 quotes.
+  ok("a scoped call refuses to skip an asset it has never quoted", !fresh({ quoted: 36, expected: 37 }));
+  ok("and so does a global one — 109 fresh quotes do not vouch for 110 assets", !fresh({ quoted: 109, expected: 110 }));
+  ok("one asset short is enough, however new the rest are", !fresh({ quoted: 109, expected: 110, newestAt: new Date(now - 1) }));
+
+  // A deactivated asset keeps its quote row, so the count can exceed the scope.
+  ok("more quotes than assets in scope is still fresh", fresh({ quoted: 120, expected: 110 }));
+  ok("an empty scope with a recent quote is fresh", fresh({ quoted: 0, expected: 0 }));
 }
 
 /* --------------------------------------------------------------- movers */
@@ -1224,6 +1252,7 @@ async function main() {
   checkChart();
   checkAxisDates();
   checkAxisPositions();
+  checkFreshness();
   checkMovers();
   checkMarketMove();
   checkCurrency();

@@ -120,7 +120,7 @@ function print(): void {
 }
 
 function crontab(): void {
-  console.log(`# ${JOBS.length} jobs for the psxPM schedule. Append to \`crontab -e\`.`);
+  console.log(`# ${JOBS.length} jobs for the Meridian schedule. Append to \`crontab -e\`.`);
   console.log(`# Read src/lib/schedule.ts first: cron does not run what it slept through.`);
   console.log(`# Ensure PATH includes node/npm — cron's is barer than a login shell's.`);
   for (const job of JOBS) {

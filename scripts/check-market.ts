@@ -46,6 +46,14 @@ import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter"
 import { quoteFromBars, mapWithConcurrency } from "@/lib/markets/providers/shared";
 import { candidateProviders, fetchAssets } from "@/lib/markets/registry";
 import { adoptAsset, normaliseSymbol } from "@/lib/markets/adopt";
+import {
+  buildMarketViews,
+  marketChange,
+  marketMove,
+  type AssetView,
+  type MarketView,
+} from "@/lib/markets/view";
+import { fmtMove, fmtPct } from "@/lib/format";
 import { CATALOGUE } from "@/lib/markets/catalogue";
 import { catalogueDrift, daysBefore, type StoredDescription } from "@/lib/markets/store";
 
@@ -537,6 +545,99 @@ function checkMovers() {
     normalForIt !== null && Math.abs(normalForIt.zScore) < 3,
     `z=${normalForIt?.zScore}`,
   );
+}
+
+/* ------------------------------------------------------ market summaries */
+
+/** An asset view: a ref, a quote's worth of fields, and a computed performance. */
+function testView(over: Partial<AssetRef>, closes: number[]): AssetView {
+  const ref = testAsset(over);
+  const bars = series(closes, "2026-08-18", ref.id);
+  return {
+    ...ref,
+    price: bars.at(-1)?.close ?? null,
+    previousClose: bars.at(-2)?.close ?? null,
+    change: null,
+    changePct: null,
+    volume: null,
+    quoteSource: "test",
+    fetchedAt: null,
+    marketTime: null,
+    performance: computePerformance(ref.id, bars),
+    spark: bars.map((b) => b.close),
+  };
+}
+
+/**
+ * The bonds market in miniature, with the shape that matters: five yields quoted
+ * in percent, six ETFs quoted in dollars, and `bonds:US10Y` as the headline. The
+ * yields are notional, so the median is computed across the ETFs alone.
+ */
+function bondsMarket(yieldCloses: number[], etfCloses: number[]): MarketView {
+  const yields = ["US10Y", "US2Y", "US5Y", "US30Y", "US3M"].map((symbol, i) =>
+    testView(
+      { id: `bonds:${symbol}`, market: "bonds", symbol, name: symbol, kind: "bond_yield", currency: "PCT" },
+      yieldCloses.map((c) => c + i * 0.1),
+    ),
+  );
+  const etfs = ["TLT", "IEF", "SHY", "AGG", "LQD", "HYG"].map((symbol, i) =>
+    testView(
+      { id: `bonds:${symbol}`, market: "bonds", symbol, name: symbol, kind: "etf", currency: "USD" },
+      etfCloses.map((c) => c + i),
+    ),
+  );
+  const [view] = buildMarketViews([...yields, ...etfs], "week");
+  return view;
+}
+
+/** A month of closes drifting upward, enough for every window a week needs. */
+const MONTH = Array.from({ length: 30 }, (_, i) => 90 + i * 0.4);
+
+function checkMarketMove() {
+  section("A market's move, and the unit it is read in");
+
+  const full = bondsMarket(
+    Array.from({ length: 30 }, (_, i) => 4.2 + i * 0.02),
+    MONTH,
+  );
+  const headline = marketMove(full, "week");
+  eq("the headline supplies the move when it has the window", headline.median, false);
+  eq("in the headline's own unit", headline.currency, "PCT");
+  ok("with the absolute change basis points are computed from", headline.change != null);
+  eq(
+    "so a yield move reads as basis points",
+    fmtMove(headline.changePct, headline.change, headline.currency),
+    "+14 bps",
+  );
+
+  // A yield whose backfill failed has two bars while the ETFs beside it have a
+  // month — the shape `RefreshRun.assetsFail` exists to record. The market still
+  // has a median; the headline has no week.
+  const gapped = bondsMarket([4.6, 4.72], MONTH);
+  const median = marketMove(gapped, "week");
+  eq("falls back to the median when the headline has no window", median.median, true);
+  ok("and the median is a real number", median.changePct != null);
+  ok("which the headline never supplied an absolute change for", median.change == null);
+  ok("so the move cannot be read in the headline's basis points", median.currency !== "PCT");
+  eq(
+    "a median is a percentage, and renders as one",
+    fmtMove(median.changePct, median.change, median.currency),
+    fmtPct(median.changePct),
+  );
+  ok(
+    "never as a dash over a median it had computed",
+    fmtMove(median.changePct, median.change, median.currency) !== "—",
+  );
+
+  eq("marketChange still answers the headline's number", marketChange(full, "week"), headline.changePct);
+  eq("and still falls back to the same median", marketChange(gapped, "week"), median.changePct);
+
+  // Nothing in the market has a week: an honest dash, not a zero.
+  const bare = bondsMarket([4.6, 4.72], [90, 90.4]);
+  const nothing = marketMove(bare, "week");
+  eq("no window anywhere leaves the move null", nothing.changePct, null);
+  eq("still on the median path", nothing.median, true);
+  eq("and renders as a dash", fmtMove(nothing.changePct, nothing.change, nothing.currency), "—");
 }
 
 /* ------------------------------------------------------------- currency */
@@ -1067,6 +1168,7 @@ async function main() {
   checkPerformance();
   checkChart();
   checkMovers();
+  checkMarketMove();
   checkCurrency();
   checkYahoo();
   checkPsx();

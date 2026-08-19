@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PERIOD_LABEL, PERIODS, topMovers, type Period } from "@/lib/markets/performance";
-import { buildMarketViews, loadAssetViews, marketChange, newestFetch } from "@/lib/markets/view";
+import { buildMarketViews, loadAssetViews, marketMove, newestFetch } from "@/lib/markets/view";
 import { refreshIfStale } from "@/lib/markets/refresh";
 import { MARKET_META, MARKETS, isMarket, type Market } from "@/lib/markets/types";
 import { fmtAgo, fmtPrice } from "@/lib/format";
@@ -64,6 +64,8 @@ export default async function MarketPage({
   const [view] = buildMarketViews(assets, period, all);
   const meta = MARKET_META[market];
   const movers = topMovers(assets, (a) => a.performance, period, 5);
+  // The move and the unit it is read in, resolved together — see `MarketMove`.
+  const move = view ? marketMove(view, period) : null;
   const updated = newestFetch(assets);
   const news = await loadNewsFeed({ market: market as Market, limit: 8 });
   // Read-only, unlike prices and news above: generating an insight is a model
@@ -91,7 +93,7 @@ export default async function MarketPage({
         <RefreshMarketsButton market={market} />
       </header>
 
-      {view?.headline && (
+      {view?.headline && move && (
         <section className="mb-6 rounded-xl border border-line bg-surface p-4">
           <div className="text-xs font-medium uppercase tracking-wide text-muted">
             {view.headline.name}
@@ -101,9 +103,9 @@ export default async function MarketPage({
               {fmtPrice(view.headline.price, view.headline.currency)}
             </span>
             <Change
-              changePct={marketChange(view, period)}
-              change={view.headline.performance.periods[period]?.change}
-              currency={view.headline.currency}
+              changePct={move.changePct}
+              change={move.change}
+              currency={move.currency}
               className="text-base font-medium"
             />
             <span className="text-xs text-muted">over {PERIOD_LABEL[period]}</span>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { fmtPrice } from "@/lib/format";
 import Change from "./Change";
 import Sparkline from "./Sparkline";
-import { marketChange, type MarketView } from "@/lib/markets/view";
+import { marketMove, type MarketView } from "@/lib/markets/view";
 import type { Period } from "@/lib/markets/performance";
 
 /**
@@ -16,8 +16,7 @@ import type { Period } from "@/lib/markets/performance";
  */
 export default function MarketCard({ view, period }: { view: MarketView; period: Period }) {
   const headline = view.headline;
-  const change = marketChange(view, period);
-  const usingMedian = !headline?.performance.periods[period];
+  const move = marketMove(view, period);
   const breadth = view.advancers + view.decliners;
 
   return (
@@ -40,12 +39,12 @@ export default function MarketCard({ view, period }: { view: MarketView; period:
           {headline ? fmtPrice(headline.price, headline.currency) : "—"}
         </span>
         <Change
-          changePct={change}
-          change={headline?.performance.periods[period]?.change}
-          currency={headline?.currency ?? "USD"}
+          changePct={move.changePct}
+          change={move.change}
+          currency={move.currency}
           className="text-sm font-medium"
           title={
-            usingMedian
+            move.median
               ? `Median move across ${view.label} benchmarks`
               : `${headline?.name ?? ""} over this period`
           }
@@ -53,7 +52,7 @@ export default function MarketCard({ view, period }: { view: MarketView; period:
       </div>
 
       <div className="mt-0.5 text-xs text-muted">
-        {usingMedian ? "median across market" : (headline?.name ?? "")}
+        {move.median ? "median across market" : (headline?.name ?? "")}
       </div>
 
       {breadth > 0 && (

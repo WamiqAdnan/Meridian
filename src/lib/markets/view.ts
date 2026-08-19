@@ -194,14 +194,61 @@ export function buildMarketViews(
 }
 
 /**
+ * A market's move over one window, together with the unit it is to be read in.
+ *
+ * The number and its unit are returned as one value rather than assembled at each
+ * call site, because the moment the headline has no data for the window they stop
+ * coming from the same place. The move then falls back to the median, which is
+ * computed across the market's own basis — and a card that went on taking the unit
+ * from the headline asked for a move in a unit that median was never in. On bonds
+ * the two disagree outright: the basis is six dollar-priced ETFs while the
+ * headline is a yield quoted in basis points, so the card asked `fmtMove` for
+ * basis points, had no absolute change to give it, and printed a dash over a
+ * median it had just computed.
+ */
+export interface MarketMove {
+  changePct: number | null;
+  /** The absolute move in `currency` — only a headline asset supplies one. */
+  change: number | null;
+  /** What `change` is denominated in, and what tells a formatter to use bps. */
+  currency: string;
+  /** True when this is the median across the market rather than the headline's move. */
+  median: boolean;
+}
+
+/**
+ * The unit a median carries.
+ *
+ * A median is a median of `changePct`, which is a plain percentage for every asset
+ * whatever that asset is priced in. Deliberately not the headline's currency, and
+ * deliberately not "PCT": both would send `fmtMove` down its basis-points branch.
+ */
+const MEDIAN_UNIT = "%";
+
+/**
  * The market's own move over a window.
  *
  * Prefers the headline asset (the S&P for stocks, BTC for crypto) and falls back
  * to the median across the market, which is the honest answer for a market like
  * commodities where no single asset represents the whole.
  */
+export function marketMove(view: MarketView, period: Period): MarketMove {
+  const headline = view.headline;
+  const own = headline && headline.performance.periods[period];
+  if (headline && own) {
+    return { changePct: own.changePct, change: own.change, currency: headline.currency, median: false };
+  }
+  return {
+    changePct: view.medianChangePct[period],
+    change: null,
+    currency: MEDIAN_UNIT,
+    median: true,
+  };
+}
+
+/** Just the percentage, for callers with nothing to format — insights, mostly. */
 export function marketChange(view: MarketView, period: Period): number | null {
-  return view.headline?.performance.periods[period]?.changePct ?? view.medianChangePct[period];
+  return marketMove(view, period).changePct;
 }
 
 /** Cross-market gainers and losers over one window. */

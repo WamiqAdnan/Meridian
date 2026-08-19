@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "check:parse": "tsx scripts/check-parse.ts",
+    "make:sample": "tsx scripts/make-sample-statement.ts",
     "try:learn": "tsx scripts/try-learn.ts",
     "check:replicator": "tsx scripts/check-replicator.ts",
     "market:refresh": "tsx scripts/refresh-market.ts",

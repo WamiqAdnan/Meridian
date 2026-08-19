@@ -430,7 +430,7 @@ will re-introduce this; the fix is a route group, not a smaller skeleton.
 ## Testing
 
 No test runner. Eight standalone check scripts, each deterministic and each
-runnable on its own — 1,432 checks in total:
+runnable on its own — 1,511 checks in total:
 
 ```bash
 npm run check:parse       # statement parser: spec engine, validator, learning loop
@@ -449,6 +449,14 @@ npm run check:schedule    # schedule: cadences, the weekly chain, plist and cron
 driven with stub providers to prove routing, merging and containment of a
 provider that throws. `check:news` passes every date in explicitly, so it gives
 the same answer next year as it does today.
+
+**No real statement is checked in.** `check:parse` runs against
+`data/sample/finqalab-sample.pdf` and the three `data/reference/*.csv` exports,
+and all four are invented — regenerate them with `npm run make:sample`, which
+derives the PDF and the CSVs from one table of trades so they cannot drift apart.
+What is faithful is the *layout*: a fixture that parsed but didn't look like the
+report would check nothing. A broker statement names its client and lists what
+they own, which is not something to put in a public repository.
 
 **The model calls are tested; the prose is not.** `check:parse` and
 `check:insights` drive the whole ask-validate-repair loop with scripted stub

@@ -1,14 +1,17 @@
 /**
  * Standalone checks for the statement parser: the spec engine's scalars, the
- * built-in Finqalab spec against the real sample PDF, the validator's ability to
+ * built-in Finqalab spec against the sample PDF, the validator's ability to
  * reject a plausible-but-wrong spec, and one synthetic foreign layout proving the
  * engine reads brokers it wasn't written for.
  *
  * Run: npm run check:parse
  *
- * The Finqalab expectations come from data/reference/transactions.csv — the
- * checked-in ledger export. If a change to the engine moves a single field, that's
- * the point.
+ * The Finqalab expectations come from data/reference/transactions.csv. Both that
+ * export and the PDF beside it are invented, and both are generated together by
+ * `npm run make:sample` — so they cannot disagree, and no real statement has to
+ * live in a public repository. The *layout* is the real one, which is what these
+ * checks are about: if a change to the engine moves a single field, that's the
+ * point.
  */
 import { readFileSync } from "node:fs";
 import {
@@ -175,7 +178,7 @@ function checkValidatorTeeth(text: string, cleanTradeCount: number) {
   /** A pattern that quietly reads only one symbol — the silent-data-loss spec. */
   const onlyOneSymbol: BrokerParseSpec = {
     ...FINQALAB_SPEC,
-    rowPattern: FINQALAB_SPEC.rowPattern.replace("(?<security>[A-Z][A-Z0-9]*)", "(?<security>ATRL)"),
+    rowPattern: FINQALAB_SPEC.rowPattern.replace("(?<security>[A-Z][A-Z0-9]*)", "(?<security>HBL)"),
   };
   const partialRun = runSpec(text, onlyOneSymbol);
   ok(

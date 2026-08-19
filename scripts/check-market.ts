@@ -39,7 +39,7 @@ import {
   seriesExtent,
 } from "@/lib/markets/chart";
 import { buildFxTable, convert, isMoney, rate } from "@/lib/markets/currency";
-import { parseChartPayload, yahooSymbolFor } from "@/lib/markets/providers/yahoo";
+import { parseChartPayload, yahooSymbolFor, yahooSymbolGuess } from "@/lib/markets/providers/yahoo";
 import { parseEodPayload, isPsxIndex } from "@/lib/markets/providers/psx";
 import { parseMarketChart, parseMarketsPayload } from "@/lib/markets/providers/coingecko";
 import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter";
@@ -653,6 +653,28 @@ function checkYahoo() {
   eq("a USD-base pair drops the USD", yahooSymbolFor(testAsset({ market: "forex", symbol: "USDPKR", kind: "fx_pair", source: "frankfurter" })), "PKR=X");
   eq("a non-USD-base pair keeps both legs", yahooSymbolFor(testAsset({ market: "forex", symbol: "EURUSD", kind: "fx_pair", source: "frankfurter" })), "EURUSD=X");
   eq("PSX is not on Yahoo", yahooSymbolFor(testAsset({ market: "psx", symbol: "LUCK", source: "psx" })), null);
+
+  // The guess is what `POST /api/assets` stores as a new row's `sourceSymbol`,
+  // and `yahooSymbolFor` trusts that verbatim forever after — so the guess has
+  // to be right at write time. It answers from the vocabulary alone, ignoring
+  // whatever `source`/`sourceSymbol` the ref happens to carry.
+  eq(
+    "the guess ignores a source of yahoo instead of short-circuiting on it",
+    yahooSymbolGuess({ market: "forex", symbol: "USDSAR", kind: "fx_pair" }),
+    "SAR=X",
+  );
+  eq(
+    "yahooSymbolFor would have echoed the bare ticker back",
+    yahooSymbolFor(testAsset({ market: "forex", symbol: "USDSAR", kind: "fx_pair", source: "yahoo", sourceSymbol: "USDSAR" })),
+    "USDSAR",
+  );
+  eq("the guess maps a coin", yahooSymbolGuess({ market: "crypto", symbol: "BTC", kind: "crypto" }), "BTC-USD");
+  eq("the guess drops a USD base", yahooSymbolGuess({ market: "forex", symbol: "USDPKR", kind: "fx_pair" }), "PKR=X");
+  eq("the guess keeps both legs of a cross", yahooSymbolGuess({ market: "forex", symbol: "GBPJPY", kind: "fx_pair" }), "GBPJPY=X");
+  eq("the guess normalises a slashed pair", yahooSymbolGuess({ market: "forex", symbol: "USD/PKR", kind: "fx_pair" }), "PKR=X");
+  eq("the guess declines PSX", yahooSymbolGuess({ market: "psx", symbol: "LUCK", kind: "stock" }), null);
+  eq("the guess declines a pair that is not six letters", yahooSymbolGuess({ market: "forex", symbol: "DXY", kind: "fx_pair" }), null);
+  eq("the guess has no opinion on a plain equity", yahooSymbolGuess({ market: "stocks", symbol: "ORCL", kind: "stock" }), null);
 }
 
 function checkPsx() {

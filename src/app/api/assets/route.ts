@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { yahooSymbolGuess } from "@/lib/markets/providers/yahoo";
 import { fetchAssets } from "@/lib/markets/registry";
 import { saveResults } from "@/lib/markets/store";
 import { assetId, isMarket, type AssetKind, type AssetRef, type Market } from "@/lib/markets/types";
@@ -26,13 +27,26 @@ const DEFAULTS: Record<Market, { kind: AssetKind; currency: string; source: stri
   psx: { kind: "stock", currency: "PKR", source: "psx" },
 };
 
-/** What each provider calls a symbol, absent an explicit `sourceSymbol`. */
-function defaultSourceSymbol(market: Market, symbol: string): string {
-  // Yahoo quotes a coin as BTC-USD. Guessing CoinGecko's slug ("bitcoin") from a
-  // ticker is not possible, so the keyless Yahoo path is the better default and
-  // the registry still falls back to CoinGecko for anything it already knows.
-  if (market === "crypto") return `${symbol}-USD`;
-  return symbol;
+/**
+ * What the chosen provider calls this symbol, absent an explicit `sourceSymbol`.
+ *
+ * Asks the provider's own vocabulary rather than restating it here. That matters
+ * because the guess is *stored*: `yahooSymbolFor` trusts `sourceSymbol` verbatim
+ * once a row names Yahoo as its source, so a wrong guess is not corrected on the
+ * next refresh — it is a permanent 404 on that row. A bare `USDSAR` made the
+ * asset unaddable outright; a bare `GBPJPY` was worse, because the ECB fallback
+ * priced it and the broken Yahoo symbol was never noticed.
+ *
+ * Guessing CoinGecko's slug ("bitcoin") from a ticker is not possible, so the
+ * keyless Yahoo path stays the default for crypto and the registry still falls
+ * back to CoinGecko for anything it already knows.
+ */
+function defaultSourceSymbol(
+  asset: { market: Market; symbol: string; kind: AssetKind },
+  source: string,
+): string {
+  if (source === "yahoo") return yahooSymbolGuess(asset) ?? asset.symbol;
+  return asset.symbol;
 }
 
 /**
@@ -82,15 +96,20 @@ export async function POST(req: Request) {
   const str = (v: unknown, fallback: string) =>
     typeof v === "string" && v.trim() ? v.trim() : fallback;
 
+  // Resolved before the ref is built: the default `sourceSymbol` depends on both
+  // the kind and the provider, so neither can still be undecided at that point.
+  const kind = str(body.kind, defaults.kind) as AssetKind;
+  const source = str(body.source, defaults.source);
+
   const ref: AssetRef = {
     id,
     market,
     symbol,
     name: str(body.name, symbol),
-    kind: str(body.kind, defaults.kind) as AssetKind,
+    kind,
     currency: str(body.currency, defaults.currency).toUpperCase(),
-    source: str(body.source, defaults.source),
-    sourceSymbol: str(body.sourceSymbol, defaultSourceSymbol(market, symbol)),
+    source,
+    sourceSymbol: str(body.sourceSymbol, defaultSourceSymbol({ market, symbol, kind }, source)),
     rank: 100,
     // Held, not seeded — it belongs in the movers table but not in the
     // "here is the market" summary.

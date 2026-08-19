@@ -141,15 +141,21 @@ export function parseChartPayload(
 
 
 /**
- * The Yahoo symbol for an asset, including assets that prefer another provider.
+ * What Yahoo calls an instrument, derived from market vocabulary alone.
  *
- * This is what makes Yahoo a genuine fallback rather than a nominal one: when
- * CoinGecko throttles, crypto still prices because Yahoo lists BTC-USD, and the
- * registry can route to it without the asset row changing. Returns null for
- * anything Yahoo genuinely does not list — PSX equities, most obviously.
+ * Split out from `yahooSymbolFor` because the two questions are different.
+ * `yahooSymbolFor` answers "what should I send for this asset row", and a row
+ * that already names Yahoo as its source has the answer written down. This
+ * answers "what would Yahoo call this", which is what a caller *choosing* a
+ * `sourceSymbol` for a brand-new asset needs — at that point there is nothing
+ * written down yet, and the bare ticker is wrong for a coin and for a pair.
+ *
+ * Returns null for anything Yahoo genuinely does not list, and for the kinds
+ * whose Yahoo name is the plain ticker — callers supply that themselves.
  */
-export function yahooSymbolFor(asset: AssetRef): string | null {
-  if (asset.source === "yahoo") return asset.sourceSymbol;
+export function yahooSymbolGuess(
+  asset: Pick<AssetRef, "market" | "symbol" | "kind">,
+): string | null {
   if (asset.market === "psx") return null;
 
   switch (asset.kind) {
@@ -164,6 +170,19 @@ export function yahooSymbolFor(asset: AssetRef): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * The Yahoo symbol for an asset, including assets that prefer another provider.
+ *
+ * This is what makes Yahoo a genuine fallback rather than a nominal one: when
+ * CoinGecko throttles, crypto still prices because Yahoo lists BTC-USD, and the
+ * registry can route to it without the asset row changing. Returns null for
+ * anything Yahoo genuinely does not list — PSX equities, most obviously.
+ */
+export function yahooSymbolFor(asset: AssetRef): string | null {
+  if (asset.source === "yahoo") return asset.sourceSymbol;
+  return yahooSymbolGuess(asset);
 }
 
 export const yahooProvider: MarketDataProvider = {

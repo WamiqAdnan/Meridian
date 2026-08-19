@@ -13,6 +13,7 @@
  * what the row should say. That split is also what lets the check script
  * exercise every rejection without a server.
  */
+import { isMoney } from "./currency";
 import { PROVIDERS } from "./registry";
 import {
   ASSET_KINDS,
@@ -88,6 +89,31 @@ export function defaultSourceSymbol(
 }
 
 /**
+ * The currency a price is quoted in, where the kind settles it.
+ *
+ * `DEFAULTS` is keyed by market, and for three kinds the market is not enough to
+ * answer. A pair is quoted in its second leg: `USDPKR` is a number of rupees, so
+ * storing it as USD renders the asset page as `$277.60` and converts a holding
+ * through the wrong rate. An index is a level and a yield is a percentage, and
+ * the formatters key on "PTS" and "PCT" to say so.
+ *
+ * The market default is still the answer for every kind that is plainly money —
+ * except when the market's own default is notional. `bonds` defaults to "PCT"
+ * because most of it is yields, but six of its rows are ETFs that trade in
+ * dollars, and a notional code is never right for something with a price.
+ *
+ * Not a new convention — every one of the catalogue's rows already follows this,
+ * which the check script asserts against the catalogue itself. It was only the
+ * user-added path that had never been told.
+ */
+function defaultCurrency(symbol: string, kind: AssetKind, fallback: string): string {
+  if (kind === "index") return "PTS";
+  if (kind === "bond_yield") return "PCT";
+  if (kind === "fx_pair" && symbol.length === 6) return symbol.slice(3);
+  return isMoney(fallback) ? fallback : "USD";
+}
+
+/**
  * Validate a request body and describe the row it asks for.
  *
  * Rejects rather than coerces: a body that names a kind, currency or source the
@@ -122,7 +148,7 @@ export function adoptAsset(
     return { ok: false, error: `Unknown kind: ${kind}. Expected one of ${ASSET_KINDS.join(", ")}.` };
   }
 
-  const currency = str(body.currency, defaults.currency).toUpperCase();
+  const currency = str(body.currency, defaultCurrency(symbol, kind, defaults.currency)).toUpperCase();
   if (!CURRENCY.test(currency)) {
     return { ok: false, error: `"${currency}" is not a currency code.` };
   }

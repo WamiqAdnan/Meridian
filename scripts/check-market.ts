@@ -971,6 +971,42 @@ function checkAdopt() {
   const pair = adoptAsset({ market: "forex", symbol: "USDSAR" });
   eq("a USD-base pair gets Yahoo's short form", pair.ok && pair.ref.sourceSymbol, "SAR=X");
 
+  // A pair is quoted in its second leg. `market: "forex"` alone cannot say which
+  // currency that is, and the catalogue has agreed on the rule for all ten of
+  // its pairs since it was written down.
+  eq("a USD-base pair is quoted in the other leg", pair.ok && pair.ref.currency, "SAR");
+  eq(
+    "a USD-quote pair is quoted in USD",
+    (() => { const r = adoptAsset({ market: "forex", symbol: "NZDUSD" }); return r.ok && r.ref.currency; })(),
+    "USD",
+  );
+  eq(
+    "a cross is quoted in its second leg",
+    (() => { const r = adoptAsset({ market: "forex", symbol: "GBPJPY" }); return r.ok && r.ref.currency; })(),
+    "JPY",
+  );
+  eq(
+    "a forex asset that is not a pair keeps the market default",
+    (() => { const r = adoptAsset({ market: "forex", symbol: "DXY", kind: "index" }); return r.ok && r.ref.currency; })(),
+    "PTS",
+  );
+  ok(
+    "an explicit currency still wins",
+    (() => { const r = adoptAsset({ market: "forex", symbol: "USDSAR", currency: "USD" }); return r.ok && r.ref.currency === "USD"; })(),
+  );
+
+  // The whole catalogue agrees with the rule, so the user-added path and the
+  // seeded path can no longer disagree about what an asset is priced in.
+  const disagreed = CATALOGUE.filter((entry) => {
+    const derived = adoptAsset({ market: entry.market, symbol: entry.symbol, kind: entry.kind });
+    return !derived.ok || derived.ref.currency !== entry.currency;
+  });
+  ok(
+    `every catalogue row's currency follows from its kind (${CATALOGUE.length} rows)`,
+    disagreed.length === 0,
+    disagreed.map((e) => e.id).join(", "),
+  );
+
   const explicit = adoptAsset({ market: "forex", symbol: "USDSAR", sourceSymbol: "USDSAR=X" });
   eq("an explicit sourceSymbol wins over the guess", explicit.ok && explicit.ref.sourceSymbol, "USDSAR=X");
 

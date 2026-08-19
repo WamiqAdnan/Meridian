@@ -7,6 +7,7 @@
  *
  * The engines stay pure; this is the seam where they meet stored data.
  */
+import { cache } from "react";
 import { computePerformance, topMovers, type AssetPerformance, type Period } from "./performance";
 import {
   daysAgo,
@@ -130,8 +131,21 @@ export interface AssetDetail {
  * Inactive assets resolve, deliberately — an asset switched off still has a page,
  * a history and a position behind it, and a dead link from the ledger would be
  * worse than a page that says it is no longer tracked.
+ *
+ * **Memoized per request.** `/assets/[id]` reads this twice — once in
+ * `generateMetadata` for the tab title, once in the page for everything else —
+ * and those are two functions Next calls separately, so there is no single place
+ * to hoist the result to the way the overview hoists its snapshot. Next's own
+ * de-duplication only covers `fetch`, and this reads Prisma; its docs name
+ * `React.cache` as the answer for exactly that case. Outside a request — a check
+ * script, `refresh-market.ts` — `cache` is a pass-through, so nothing off the
+ * server changes.
+ *
+ * The memo key is the argument list, so call it as `loadAssetDetail(id)` from
+ * both sides. Passing `DETAIL_DAYS` explicitly at one call site would be the same
+ * query under a different key, and the second read would quietly come back.
  */
-export async function loadAssetDetail(
+export const loadAssetDetail = cache(async function loadAssetDetail(
   id: string,
   days = DETAIL_DAYS,
 ): Promise<AssetDetail | null> {
@@ -147,7 +161,7 @@ export async function loadAssetDetail(
     },
     bars,
   };
-}
+});
 
 /**
  * Group loaded assets into per-market summaries, in display order.

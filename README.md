@@ -226,6 +226,7 @@ Everything is optional except `DATABASE_URL`.
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | **Required.** SQLite path, e.g. `file:./dev.db` |
+| `NEXT_PUBLIC_INVESTORS` | Comma-separated names sharing the account, e.g. `Ada,Grace`. Defaults to `Investor A,Investor B`. These strings are what `Transaction.owner` holds, so renaming one orphans that person's rows — migrate the column too. Inlined at build time; changing it needs a restart |
 | `ANTHROPIC_API_KEY` | Run the model-backed features via the Anthropic API |
 | `AI_BASE_URL` | An OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp, vLLM). **Wins over the Anthropic key.** e.g. `http://localhost:11434/v1` |
 | `AI_MODEL` | Model name for whichever backend is in use |

@@ -10,7 +10,7 @@ datasource db {
 /// The ledger — the single source of truth. Holdings are always derived from these rows.
 model Transaction {
   id             Int      @id @default(autoincrement())
-  owner          String   @default("Investor A") // which investor this trade belongs to (shared Finqalab account)
+  owner          String   @default("Investor A") // which investor this trade belongs to (shared broker account)
   broker         String   @default("finqalab") // profile slug the row was imported under
   security       String
   /// Soft reference to Asset.id (e.g. "psx:LUCK", "crypto:BTC"). Deliberately NOT

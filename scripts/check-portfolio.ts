@@ -9,6 +9,7 @@
  * meaning rather than as a mysterious failing assertion.
  */
 import { buildManualTrade, isIsoDate, manualTradeNo, resolveAssetId, MANUAL_BROKER } from "@/lib/ledger";
+import { INVESTORS } from "@/lib/investors";
 import { buildFxTable } from "@/lib/markets/currency";
 import { computePerformance } from "@/lib/markets/performance";
 import type { BarData } from "@/lib/markets/types";
@@ -19,6 +20,14 @@ import {
   type PortfolioTrade,
   type PricedAsset,
 } from "@/lib/portfolio";
+
+/**
+ * A valid owner, taken from the configured list rather than written out, so
+ * these checks say the same thing whether or not NEXT_PUBLIC_INVESTORS is set in
+ * the shell that runs them. "Nobody" below is the counterpart: a string the list
+ * cannot contain.
+ */
+const OWNER = INVESTORS[0];
 
 let failures = 0;
 let checks = 0;
@@ -94,7 +103,7 @@ function checkResolution() {
     ["commodities", "XAU"],
   ] as const) {
     const built = buildManualTrade(
-      { owner: "Investor A", side: "BUY", tradeDate: "2026-08-01", qty: "1", rate: "100" },
+      { owner: OWNER, side: "BUY", tradeDate: "2026-08-01", qty: "1", rate: "100" },
       { id: `${market}:${symbol}`, symbol, market },
     );
     ok(`a manual ${market} trade is buildable`, built.ok, built.ok ? "" : built.errors.join(" "));
@@ -127,7 +136,7 @@ function checkManualEntry() {
   eq("a non-leap 29 Feb fails", isIsoDate("2026-02-29"), false);
 
   const good = buildManualTrade(
-    { owner: "Investor A", side: "buy", tradeDate: "2026-08-17", qty: "0.05", rate: "80,000", fees: "12.5" },
+    { owner: OWNER, side: "buy", tradeDate: "2026-08-17", qty: "0.05", rate: "80,000", fees: "12.5" },
     ASSET,
     { now: NOW, tradeNo: "M-TEST" },
   );
@@ -149,7 +158,7 @@ function checkManualEntry() {
   }
 
   const sell = buildManualTrade(
-    { owner: "Investor A", side: "SELL", tradeDate: "2026-08-17", qty: 2, rate: 100, fees: 5 },
+    { owner: OWNER, side: "SELL", tradeDate: "2026-08-17", qty: 2, rate: 100, fees: 5 },
     ASSET,
     { now: NOW },
   );
@@ -158,7 +167,7 @@ function checkManualEntry() {
   if (sell.ok) near("a SELL nets gross - fees", sell.trade.netAmount, 195);
 
   const free = buildManualTrade(
-    { owner: "Investor A", side: "BUY", tradeDate: "2026-08-17", qty: 10, rate: 0 },
+    { owner: OWNER, side: "BUY", tradeDate: "2026-08-17", qty: 10, rate: 0 },
     ASSET,
     { now: NOW },
   );
@@ -178,28 +187,28 @@ function checkManualEntry() {
   }
 
   const future = buildManualTrade(
-    { owner: "Investor A", side: "BUY", tradeDate: "2026-08-19", qty: 1, rate: 1 },
+    { owner: OWNER, side: "BUY", tradeDate: "2026-08-19", qty: 1, rate: 1 },
     ASSET,
     { now: NOW },
   );
   eq("a future trade date is rejected", future.ok, false);
 
   const today = buildManualTrade(
-    { owner: "Investor A", side: "BUY", tradeDate: "2026-08-18", qty: 1, rate: 1 },
+    { owner: OWNER, side: "BUY", tradeDate: "2026-08-18", qty: 1, rate: 1 },
     ASSET,
     { now: NOW },
   );
   ok("today is not the future", today.ok);
 
   const zeroQty = buildManualTrade(
-    { owner: "Investor A", side: "BUY", tradeDate: "2026-08-18", qty: 0, rate: 10 },
+    { owner: OWNER, side: "BUY", tradeDate: "2026-08-18", qty: 0, rate: 10 },
     ASSET,
     { now: NOW },
   );
   eq("a zero quantity is rejected", zeroQty.ok, false);
 
   const blankQty = buildManualTrade(
-    { owner: "Investor A", side: "BUY", tradeDate: "2026-08-18", qty: "", rate: 10 },
+    { owner: OWNER, side: "BUY", tradeDate: "2026-08-18", qty: "", rate: 10 },
     ASSET,
     { now: NOW },
   );

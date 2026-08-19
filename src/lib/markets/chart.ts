@@ -63,6 +63,39 @@ export function chartWindow(
 
 /* ------------------------------------------------------------------- axis */
 
+/** Where an x-axis label sits, and how it is anchored against that point. */
+export interface AxisLabel {
+  /** Index into the drawn bars. */
+  i: number;
+  anchor: "start" | "middle" | "end";
+}
+
+/**
+ * Which bars get an x-axis label: the first, the last, and the middle one.
+ *
+ * The midpoint is dropped when it coincides with an end, which at exactly two
+ * bars it does — `Math.floor((2 - 1) / 2)` is 0, the first bar. That put index 0
+ * in the list twice: two labels painted on top of each other at the left edge,
+ * one of them anchored "middle" so it hung off the frame, and a duplicate React
+ * key for the pair.
+ *
+ * Two bars is a window `chartWindow` returns deliberately ("One point is not a
+ * line. Two is."), and an asset stuck at exactly two stored bars stays there —
+ * `assetsMissingHistory` counts anything above one as having history, so no
+ * backfill comes back for it.
+ */
+export function axisLabels(count: number): AxisLabel[] {
+  if (count <= 0) return [];
+  if (count === 1) return [{ i: 0, anchor: "middle" }];
+  const last = count - 1;
+  const middle = Math.floor(last / 2);
+  return [
+    { i: 0, anchor: "start" },
+    ...(middle > 0 && middle < last ? [{ i: middle, anchor: "middle" as const }] : []),
+    { i: last, anchor: "end" },
+  ];
+}
+
 /**
  * A date label for the x-axis: "12 Aug", or "12 Aug 25" when the drawn window
  * spans more than one year.

@@ -34,6 +34,7 @@ import {
 import {
   MIN_CHART_POINTS,
   axisDateLabel,
+  axisLabels,
   chartWindow,
   niceStep,
   priceScale,
@@ -487,6 +488,37 @@ function checkAxisDates() {
     if (before === undefined) delete process.env.TZ;
     else process.env.TZ = before;
   }
+}
+
+function checkAxisPositions() {
+  section("Axis label positions");
+
+  const two = axisLabels(2);
+  eq("a two-bar window gets two labels, not three", two.length, 2);
+  eq("no position is drawn twice", new Set(two.map((l) => l.i)).size, two.length);
+  eq("the first bar anchors at the start", `${two[0].i}:${two[0].anchor}`, "0:start");
+  eq("the last at the end", `${two[1].i}:${two[1].anchor}`, "1:end");
+
+  const three = axisLabels(3);
+  eq("three bars keep their midpoint", three.length, 3);
+  eq("which sits between the ends", `${three[1].i}:${three[1].anchor}`, "1:middle");
+
+  const full = axisLabels(499);
+  eq("a full window is still three labels", full.length, 3);
+  eq("first, middle, last", full.map((l) => l.i).join(), "0,249,498");
+  ok("every position indexes a bar that exists", full.every((l) => l.i >= 0 && l.i < 499));
+
+  // Positions must stay ascending, or the anchors stop matching the geometry.
+  for (const count of [2, 3, 4, 5, 10, 60, 731]) {
+    const labels = axisLabels(count);
+    ok(`${count} bars: positions ascend`, labels.every((l, i) => i === 0 || l.i > labels[i - 1].i));
+    ok(`${count} bars: none is drawn twice`, new Set(labels.map((l) => l.i)).size === labels.length);
+    ok(`${count} bars: the last bar is labelled`, labels.at(-1)?.i === count - 1);
+  }
+
+  // `PriceChart` refuses to draw below two bars, but the function is total.
+  eq("one bar is one label", axisLabels(1).length, 1);
+  eq("no bars, no labels", axisLabels(0).length, 0);
 }
 
 /* --------------------------------------------------------------- movers */
@@ -1191,6 +1223,7 @@ async function main() {
   checkPerformance();
   checkChart();
   checkAxisDates();
+  checkAxisPositions();
   checkMovers();
   checkMarketMove();
   checkCurrency();

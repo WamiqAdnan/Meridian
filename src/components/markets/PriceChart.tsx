@@ -1,4 +1,4 @@
-import { axisDateLabel, priceScale, seriesExtent } from "@/lib/markets/chart";
+import { axisDateLabel, axisLabels, priceScale, seriesExtent } from "@/lib/markets/chart";
 import { fmtPrice } from "@/lib/format";
 import type { BarData } from "@/lib/markets/types";
 
@@ -78,12 +78,7 @@ export default function PriceChart({
   });
 
   const multiYear = extent.from.slice(0, 4) !== extent.to.slice(0, 4);
-  const midpoint = Math.floor((bars.length - 1) / 2);
-  const xLabels = [
-    { i: 0, anchor: "start" as const },
-    { i: midpoint, anchor: "middle" as const },
-    { i: bars.length - 1, anchor: "end" as const },
-  ];
+  const xLabels = axisLabels(bars.length);
 
   const direction = extent.changePct == null ? "unchanged" : rising ? "up" : "down";
   const move = extent.changePct == null ? "" : ` ${direction} ${Math.abs(extent.changePct).toFixed(2)}%`;

@@ -30,10 +30,15 @@ function labelFor(date: string, today: string): string {
   const yesterday = new Date(`${today}T00:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   if (date === dayKey(yesterday)) return "Yesterday";
+  // Formatted in UTC, because that is the zone the key was bucketed in. Without
+  // it the label is rendered in the server's zone and, anywhere west of UTC, a
+  // midnight-UTC instant formats as the previous day — so the heading disagrees
+  // with the articles beneath it.
   return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PK", {
     weekday: "short",
     day: "numeric",
     month: "short",
+    timeZone: "UTC",
   });
 }
 

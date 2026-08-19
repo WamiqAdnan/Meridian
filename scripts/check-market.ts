@@ -33,6 +33,7 @@ import {
 } from "@/lib/markets/performance";
 import {
   MIN_CHART_POINTS,
+  axisDateLabel,
   chartWindow,
   niceStep,
   priceScale,
@@ -464,6 +465,28 @@ function checkChart() {
   near("…and has not moved", oneBar?.changePct, 0);
 
   eq("a zero open yields no percentage", seriesExtent(series([0, 50]))?.changePct, null);
+}
+
+function checkAxisDates() {
+  section("Axis date labels");
+
+  // Node re-reads `TZ` at runtime. The zone is stated rather than inherited
+  // because the bug is invisible from Pakistan: PKT is UTC+5, so a midnight-UTC
+  // instant is still the same calendar day here and every label comes out right.
+  const before = process.env.TZ;
+  try {
+    process.env.TZ = "America/New_York";
+    eq("a bar's date labels as its own day, west of UTC", axisDateLabel("2026-08-12", false), "12 Aug");
+    eq("with the year when the window spans two", axisDateLabel("2025-12-31", true), "31 Dec 25");
+    process.env.TZ = "Asia/Karachi";
+    eq("and the same day east of it", axisDateLabel("2026-08-12", false), "12 Aug");
+    eq("year included there too", axisDateLabel("2025-12-31", true), "31 Dec 25");
+    process.env.TZ = "Pacific/Kiritimati";
+    eq("and at UTC+14", axisDateLabel("2026-01-01", false), "1 Jan");
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
 }
 
 /* --------------------------------------------------------------- movers */
@@ -1167,6 +1190,7 @@ async function main() {
   checkAdopt();
   checkPerformance();
   checkChart();
+  checkAxisDates();
   checkMovers();
   checkMarketMove();
   checkCurrency();

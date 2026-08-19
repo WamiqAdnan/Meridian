@@ -61,6 +61,26 @@ export function chartWindow(
   return { bars: bars.slice(-minPoints), exact: false };
 }
 
+/* ------------------------------------------------------------------- axis */
+
+/**
+ * A date label for the x-axis: "12 Aug", or "12 Aug 25" when the drawn window
+ * spans more than one year.
+ *
+ * Formatted in UTC, because a bar's `date` *is* a UTC calendar day — the whole
+ * market layer stores yyyy-mm-dd and compares it as text. Formatting in the
+ * server's own zone instead labels a midnight-UTC instant as the previous day
+ * anywhere west of UTC, so the axis would name days the series does not contain.
+ */
+export function axisDateLabel(date: string, withYear: boolean): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PK", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+    ...(withYear ? { year: "2-digit" } : {}),
+  });
+}
+
 /* ------------------------------------------------------------------- scale */
 
 export interface PriceScale {

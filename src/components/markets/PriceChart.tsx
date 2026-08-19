@@ -1,4 +1,4 @@
-import { priceScale, seriesExtent } from "@/lib/markets/chart";
+import { axisDateLabel, priceScale, seriesExtent } from "@/lib/markets/chart";
 import { fmtPrice } from "@/lib/format";
 import type { BarData } from "@/lib/markets/types";
 
@@ -32,15 +32,6 @@ const PLOT = {
   width: VIEW.width - PAD.left - PAD.right,
   height: VIEW.height - PAD.top - PAD.bottom,
 };
-
-/** "12 Aug", or "12 Aug 25" when the window spans more than one year. */
-function dateLabel(date: string, withYear: boolean): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-PK", {
-    day: "numeric",
-    month: "short",
-    ...(withYear ? { year: "2-digit" } : {}),
-  });
-}
 
 export default function PriceChart({
   bars,
@@ -161,7 +152,7 @@ export default function PriceChart({
           fontSize="10"
           fill="var(--muted)"
         >
-          {dateLabel(bars[i].date, multiYear)}
+          {axisDateLabel(bars[i].date, multiYear)}
         </text>
       ))}
     </svg>

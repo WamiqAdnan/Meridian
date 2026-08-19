@@ -47,6 +47,8 @@ import {
   mergeArticles,
 } from "@/lib/news/registry";
 import { buildQueries, coveringScopes, matchOutcomes } from "@/lib/news/ingest";
+import { groupByDay } from "@/lib/news/view";
+import type { NewsItem } from "@/lib/news/store";
 import {
   assetQuery,
   marketQuery,
@@ -830,6 +832,75 @@ function checkIngest() {
   );
 }
 
+/* ---------------------------------------------------------------- day groups */
+
+/** A news item that carries nothing but the timestamp the grouping reads. */
+function itemAt(iso: string): NewsItem {
+  return {
+    article: {
+      id: iso,
+      title: iso,
+      url: `https://example.test/${iso}`,
+      source: "Test",
+      provider: "test",
+      summary: null,
+      publishedAt: new Date(iso),
+      market: null,
+    },
+    matches: [],
+  };
+}
+
+/**
+ * Grouping runs under a fixed timezone rather than the machine's.
+ *
+ * The bug this covers is invisible from Pakistan: PKT is UTC+5, so a midnight-UTC
+ * instant is still the same calendar day locally and every label comes out right.
+ * West of UTC it does not. Node re-reads `TZ` at runtime, so the check states the
+ * zone it means and puts the old one back.
+ */
+function underTimeZone<T>(tz: string, fn: () => T): T {
+  const before = process.env.TZ;
+  process.env.TZ = tz;
+  try {
+    return fn();
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
+}
+
+function checkNewsDays() {
+  section("Day groups");
+
+  const items = [
+    itemAt("2026-08-19T14:00:00Z"),
+    itemAt("2026-08-19T02:00:00Z"),
+    itemAt("2026-08-18T20:00:00Z"),
+    itemAt("2026-08-12T09:00:00Z"),
+  ];
+  const now = new Date("2026-08-19T18:00:00Z");
+
+  const east = underTimeZone("Asia/Karachi", () => groupByDay(items, now));
+  const west = underTimeZone("America/New_York", () => groupByDay(items, now));
+
+  eq("three days, newest first", east.length, 3);
+  eq("today's bucket leads", east[0].date, "2026-08-19");
+  eq("and is labelled Today", east[0].label, "Today");
+  eq("yesterday is named", east[1].label, "Yesterday");
+  eq("both of today's stories land in it", east[0].items.length, 2);
+  ok("newest first within the day", east[0].items[0].article.publishedAt > east[0].items[1].article.publishedAt);
+
+  eq("the buckets do not move with the server's zone", west.map((d) => d.date).join(), east.map((d) => d.date).join());
+  eq(
+    "and neither do their labels",
+    west.map((d) => d.label).join("|"),
+    east.map((d) => d.label).join("|"),
+  );
+  eq("a written date reads as its own UTC day", east[2].label, "Wed, 12 Aug");
+  eq("west of UTC too", west[2].label, "Wed, 12 Aug");
+}
+
 /* ------------------------------------------------------------------------ run */
 
 async function main() {
@@ -845,6 +916,7 @@ async function main() {
   checkProviders();
   await checkRegistry();
   checkIngest();
+  checkNewsDays();
 
   if (failures > 0) {
     console.error(`\nFAILED — ${failures} of ${checks} checks failed.`);

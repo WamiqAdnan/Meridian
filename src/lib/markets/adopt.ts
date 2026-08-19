@@ -43,11 +43,25 @@ export const DEFAULTS: Record<Market, { kind: AssetKind; currency: string; sourc
   psx: { kind: "stock", currency: "PKR", source: "psx" },
 };
 
-/** Characters a ticker may contain. */
-const TICKER = /^[A-Z0-9][A-Z0-9.\-/=^]{0,19}$/;
+/**
+ * Characters a ticker may contain, after normalisation.
+ *
+ * Notably absent: `/`. An asset's id is `{market}:{symbol}` and `assetHref` puts
+ * it in a URL path unescaped on purpose, so a slash in the symbol splits the id
+ * across two path segments and 404s from every link in the app. The slash is not
+ * load-bearing anywhere — `buildFxTable` and `splitPair` both strip it before
+ * reading a pair — so it is normalised away below rather than rejected, and
+ * `USD/PKR` resolves to the `forex:USDPKR` the catalogue already holds.
+ */
+const TICKER = /^[A-Z0-9][A-Z0-9.\-=^]{0,19}$/;
 
 /** ISO 4217, plus the two notional codes the formatters key on ("PTS", "PCT"). */
 const CURRENCY = /^[A-Z]{3}$/;
+
+/** Uppercased and stripped of the one character an id cannot survive. */
+export function normaliseSymbol(raw: unknown): string {
+  return typeof raw === "string" ? raw.trim().toUpperCase().replace(/\//g, "") : "";
+}
 
 export type AdoptResult =
   | { ok: true; ref: AssetRef }
@@ -91,7 +105,7 @@ export function adoptAsset(
     return { ok: false, error: `Unknown market: ${String(market)}` };
   }
 
-  const symbol = typeof body.symbol === "string" ? body.symbol.trim().toUpperCase() : "";
+  const symbol = normaliseSymbol(body.symbol);
   if (!symbol) {
     return { ok: false, error: "A ticker symbol is required." };
   }

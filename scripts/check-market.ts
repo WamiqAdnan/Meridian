@@ -45,7 +45,7 @@ import { parseMarketChart, parseMarketsPayload } from "@/lib/markets/providers/c
 import { parseTimeseries, splitPair } from "@/lib/markets/providers/frankfurter";
 import { quoteFromBars, mapWithConcurrency } from "@/lib/markets/providers/shared";
 import { candidateProviders, fetchAssets } from "@/lib/markets/registry";
-import { adoptAsset } from "@/lib/markets/adopt";
+import { adoptAsset, normaliseSymbol } from "@/lib/markets/adopt";
 import { CATALOGUE } from "@/lib/markets/catalogue";
 import { catalogueDrift, daysBefore, type StoredDescription } from "@/lib/markets/store";
 
@@ -1013,6 +1013,15 @@ function checkAdopt() {
   ok("a missing ticker is refused", !adoptAsset({ market: "stocks" }).ok);
   ok("a non-string ticker is refused", !adoptAsset({ market: "stocks", symbol: 42 }).ok);
   ok("a ticker of punctuation is refused", !adoptAsset({ market: "stocks", symbol: "!!!" }).ok);
+
+  // A slash would split `forex:USD/PKR` across two path segments, and
+  // `assetHref` puts an id in a URL path unescaped on purpose.
+  eq("a slash is normalised out of a ticker", normaliseSymbol("usd/pkr"), "USDPKR");
+  const slashed = adoptAsset({ market: "forex", symbol: "USD/PKR" });
+  eq("the slashed pair resolves to the catalogue's id", slashed.ok && slashed.ref.id, "forex:USDPKR");
+  ok("no accepted id can contain a slash", slashed.ok && !slashed.ref.id.includes("/"));
+  eq("and it still gets the right Yahoo symbol", slashed.ok && slashed.ref.sourceSymbol, "PKR=X");
+  ok("a ticker that is only a slash is refused", !adoptAsset({ market: "forex", symbol: "/" }).ok);
 
 }
 

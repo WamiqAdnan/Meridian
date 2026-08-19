@@ -46,3 +46,7 @@ next-env.d.ts
 
 # scheduled-job output — see `npm run schedule`
 /logs
+
+# agent tooling — local only
+/CLAUDE.md
+/.claude/

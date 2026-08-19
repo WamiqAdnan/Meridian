@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { toOwnerFilter } from "@/lib/investors";
@@ -6,6 +7,11 @@ import LedgerTable, { type LedgerRow } from "@/components/LedgerTable";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Transactions",
+  description: "Every recorded trade — the ledger every holding in the app is derived from.",
+};
 
 export default async function TransactionsPage({
   searchParams,
@@ -39,7 +45,7 @@ export default async function TransactionsPage({
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-muted">
             {trades.length} trade{trades.length === 1 ? "" : "s"} · the ledger holdings are derived from.
             Tick rows to reassign several at once, change a single <b>owner</b> inline, or delete a row —
             holdings recompute automatically.
@@ -47,9 +53,9 @@ export default async function TransactionsPage({
         </div>
         <Link
           href="/"
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
+          className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface-raised"
         >
-          ← Dashboard
+          ← Overview
         </Link>
       </header>
 
@@ -58,7 +64,7 @@ export default async function TransactionsPage({
       </div>
 
       {trades.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500 dark:border-neutral-700">
+        <div className="rounded-xl border border-dashed border-line p-8 text-center text-sm text-muted">
           No trades yet. Import a Finqalab report from the dashboard.
         </div>
       ) : (

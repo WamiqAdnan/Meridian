@@ -1,10 +1,17 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { getPortfolio } from "@/lib/portfolio";
+import { loadPortfolio } from "@/lib/portfolio-view";
 import { DEFAULT_INDEX, getIndexConstituents, type IndexSnapshot } from "@/lib/psx-index";
 import ReplicatorPanel from "@/components/ReplicatorPanel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Index Replicator",
+  description:
+    "Turn an index and a rupee amount into a whole-share buy list that matches its weights, fees included.",
+};
 
 /**
  * Build a weight-matched, whole-share buy plan from a live index.
@@ -16,8 +23,8 @@ export const dynamic = "force-dynamic";
  * when a pasted row is missing its price.
  */
 export default async function ReplicatePage() {
-  const [{ holdings, pricesFetchedAt }, index] = await Promise.all([
-    getPortfolio(null),
+  const [{ positions, pricesFetchedAt }, index] = await Promise.all([
+    loadPortfolio(),
     getIndexConstituents(DEFAULT_INDEX).then(
       (snapshot): { snapshot: IndexSnapshot | null; error: string | null } => ({
         snapshot,
@@ -31,9 +38,12 @@ export default async function ReplicatePage() {
     ),
   ]);
 
+  // The replicator buys PSX index constituents, so only PSX positions are
+  // relevant here — and a fallback price has to be in rupees to be usable.
+  const psx = positions.filter((p) => p.market === "psx");
   const fallbackPrices: Record<string, number> = {};
-  for (const h of holdings) {
-    if (h.livePrice != null) fallbackPrices[h.security] = h.livePrice;
+  for (const p of psx) {
+    if (p.price != null) fallbackPrices[p.symbol] = p.price;
   }
 
   return (
@@ -41,7 +51,7 @@ export default async function ReplicatePage() {
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Index Replicator</h1>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-muted">
             Pick an index and how many of its top names to hold, name an amount — get the
             whole-share buy list that matches those weights, fees included.
           </p>
@@ -55,14 +65,14 @@ export default async function ReplicatePage() {
       </header>
 
       <ReplicatorPanel
-        heldSymbols={holdings.map((h) => h.security)}
+        heldSymbols={psx.map((p) => p.symbol)}
         fallbackPrices={fallbackPrices}
         initialSnapshot={index.snapshot}
         initialError={index.error}
       />
 
       {pricesFetchedAt && (
-        <p className="mt-6 text-xs text-neutral-500">
+        <p className="mt-6 text-xs text-muted">
           Fallback prices for rows marked * come from the dashboard cache, last updated{" "}
           {new Date(pricesFetchedAt as Date).toLocaleString("en-PK", {
             dateStyle: "medium",

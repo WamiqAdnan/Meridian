@@ -43,3 +43,6 @@ next-env.d.ts
 # local dev database — holds the real ledger, and prisma db push recreates it
 /prisma/*.db
 /prisma/*.db-journal
+
+# scheduled-job output — see `npm run schedule`
+/logs

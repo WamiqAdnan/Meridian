@@ -14,7 +14,8 @@
 import { readFileSync } from "node:fs";
 import { runSpec, validateRun, type BrokerParseSpec } from "@/lib/broker-spec";
 import { BUILTIN_PROFILES } from "@/lib/builtin-brokers";
-import { learnParser, learningBackendLabel } from "@/lib/broker-learn";
+import { learnParser } from "@/lib/broker-learn";
+import { aiBackendLabel } from "@/lib/ai";
 import { extractStatementText, fingerprintLayout } from "@/lib/statement-text";
 
 function report(spec: BrokerParseSpec, text: string) {
@@ -69,11 +70,11 @@ async function main() {
     }
   }
 
-  const backend = learningBackendLabel();
+  const backend = aiBackendLabel();
   if (!backend) {
     console.error(
       "\nNo built-in parser reads this, and no learning backend is configured.\n" +
-        "Set ANTHROPIC_API_KEY, or LEARNING_BASE_URL + LEARNING_MODEL for a local model.",
+        "Set ANTHROPIC_API_KEY, or AI_BASE_URL + AI_MODEL for a local model.",
     );
     process.exit(1);
   }

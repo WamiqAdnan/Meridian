@@ -8,9 +8,6 @@
 export const INVESTORS = ["Investor A", "Investor B"] as const;
 export type Investor = (typeof INVESTORS)[number];
 
-/** The combined-view sentinel used in URLs / filters. */
-export const TOGETHER = "Together";
-
 export function isInvestor(v: unknown): v is Investor {
   return typeof v === "string" && (INVESTORS as readonly string[]).includes(v);
 }

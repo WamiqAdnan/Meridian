@@ -9,12 +9,8 @@ import {
   saveLearnedProfile,
   type ProfileRef,
 } from "@/lib/broker-profiles";
-import {
-  LearningFailedError,
-  LearningUnavailableError,
-  isLearningConfigured,
-  learnParser,
-} from "@/lib/broker-learn";
+import { learnParser } from "@/lib/broker-learn";
+import { AiUnavailableError, StructuredTaskError, isAiConfigured } from "@/lib/ai";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,11 +77,11 @@ export async function POST(req: Request) {
     await recordParserUse(profile.id, fingerprint);
   } else {
     // 2. Nothing reads this statement — learn a parser for it, once.
-    if (!isLearningConfigured()) {
+    if (!isAiConfigured()) {
       return NextResponse.json(
         {
           error:
-            "This doesn't match any broker layout we know, and nothing is configured to learn a new one. Set ANTHROPIC_API_KEY in .env, or point LEARNING_BASE_URL and LEARNING_MODEL at a local model, then restart and upload again.",
+            "This doesn't match any broker layout we know, and nothing is configured to learn a new one. Set ANTHROPIC_API_KEY in .env, or point AI_BASE_URL and AI_MODEL at a local model, then restart and upload again.",
           details: nearMisses,
         },
         { status: 422 },
@@ -104,7 +100,7 @@ export async function POST(req: Request) {
       });
       learned = true;
     } catch (e) {
-      if (e instanceof LearningUnavailableError || e instanceof LearningFailedError) {
+      if (e instanceof AiUnavailableError || e instanceof StructuredTaskError) {
         return NextResponse.json({ error: e.message, details: nearMisses }, { status: 422 });
       }
       return NextResponse.json(

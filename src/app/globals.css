@@ -1,26 +1,112 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens.
+ *
+ * Light and dark are both defined here rather than only overriding in the media
+ * query, so nothing depends on a colour that exists in one theme only.
+ *
+ * `--gain` / `--loss` are the one pair of semantic colours in the app: every
+ * price move, in every market, is coloured from these. Inline SVG can't use a
+ * Tailwind class, so they are real custom properties rather than utilities.
+ */
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --surface: #ffffff;
+  --surface-raised: #fafafa;
+  --foreground: #0a0a0a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --gain: #059669;
+  --loss: #e11d48;
+  --accent: #2563eb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
+    --background: #08090b;
+    --surface: #0d0f12;
+    --surface-raised: #14171c;
     --foreground: #ededed;
+    --muted: #8b93a1;
+    --border: #1f242c;
+    --gain: #10b981;
+    --loss: #fb7185;
+    --accent: #60a5fa;
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--border);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /*
+   * Geist, loaded by next/font in layout.tsx. This previously read
+   * `Arial, Helvetica, sans-serif`, which silently overrode the loaded font
+   * everywhere — the whole app rendered in Arial.
+   */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "tnum" off;
+}
+
+/* Financial tables are read down the column; digits must line up. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A loading skeleton pulses; a reader who has asked the OS for less motion
+ * should get a still one rather than nothing at all, so the animation stops
+ * while the shape stays. Everything else here is a colour transition measured
+ * in milliseconds, but the sweep is broad on purpose — no animation in this app
+ * carries information that its stillness would lose.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * One visible focus ring for the whole app.
+ *
+ * Several inputs set `outline-none` and replaced the ring with a border colour
+ * change — a one-pixel shift that is easy to miss and, on the search box, sits
+ * against a surface only a shade off the border it changes to. `:focus-visible`
+ * only fires for keyboard focus, so a clicked button does not sprout a ring.
+ *
+ * `--accent` is already the colour of every link in the app, so a focused
+ * control reads as "this is the thing you would activate" without introducing a
+ * fifth semantic colour.
+ *
+ * In `@layer base` on purpose. An unlayered rule outranks every Tailwind
+ * utility, which would draw a ring around the whole of `<main>` when the skip
+ * link lands on it — `main` is not in the tab order, so it needs no indicator and
+ * a 2px box around the entire page is not one. Layered, `outline-none` can still
+ * win where a component means it.
+ */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }

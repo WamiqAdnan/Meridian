@@ -12,7 +12,18 @@
     "db:studio": "prisma studio",
     "check:parse": "tsx scripts/check-parse.ts",
     "try:learn": "tsx scripts/try-learn.ts",
-    "check:replicator": "tsx scripts/check-replicator.ts"
+    "check:replicator": "tsx scripts/check-replicator.ts",
+    "market:refresh": "tsx scripts/refresh-market.ts",
+    "market:backfill": "tsx scripts/refresh-market.ts --history",
+    "news:refresh": "tsx scripts/refresh-news.ts",
+    "insights:generate": "tsx scripts/generate-insights.ts",
+    "schedule": "tsx scripts/schedule.ts",
+    "check:market": "tsx scripts/check-market.ts",
+    "check:news": "tsx scripts/check-news.ts",
+    "check:insights": "tsx scripts/check-insights.ts",
+    "check:portfolio": "tsx scripts/check-portfolio.ts",
+    "check:search": "tsx scripts/check-search.ts",
+    "check:schedule": "tsx scripts/check-schedule.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

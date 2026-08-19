@@ -1,6 +1,6 @@
 /**
- * Learning a parser for a broker we've never seen — the one path that costs an
- * LLM call.
+ * Learning a parser for a broker we've never seen — the one import path that costs
+ * an LLM call.
  *
  * The model never sees the ledger and never parses the trades itself. It reads a
  * sample of the statement and writes a `BrokerParseSpec` (a regex plus a column
@@ -9,15 +9,17 @@
  * that looks like a trade went unread. Only a spec that survives that gets saved,
  * and from then on the broker parses for free.
  *
- * If validation fails, the failures go back to the model verbatim (up to
- * `MAX_ATTEMPTS`), which is far more effective than re-asking blind.
- *
- * Two backends, chosen by environment (see `resolveProvider`): the Anthropic API,
- * or any OpenAI-compatible server — Ollama, LM Studio, llama.cpp, vLLM. Pointing it
- * at a local model means the statement sample never leaves the machine, which for
- * financial statements is the more interesting property of the two.
+ * If validation fails, the failures go back to the model verbatim, which is far
+ * more effective than re-asking blind. That ask-validate-repair loop, and the
+ * choice of backend behind it, now live in `src/lib/ai/` — this file is the part
+ * that is about broker statements: the schema, the prompt, and what makes a spec
+ * good enough to keep.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import {
+  runStructuredTask,
+  type AiProvider,
+  type Review,
+} from "@/lib/ai";
 import {
   assertValidSpec,
   diagnosePattern,
@@ -32,192 +34,10 @@ import {
 } from "@/lib/broker-spec";
 import { sampleForLearning } from "@/lib/statement-text";
 
-const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5";
 const MAX_ATTEMPTS = 3;
-/**
- * Local models are slow — a reasoning model on consumer hardware can spend minutes
- * on one spec — and this runs once per broker, so wait rather than fail.
- * Override with LEARNING_TIMEOUT_MS.
- */
-const DEFAULT_TIMEOUT_MS = 600_000;
 
-/** Thrown when nothing is configured to learn with. */
-export class LearningUnavailableError extends Error {}
-
-/** Thrown when the model couldn't produce a spec that survives validation. */
-export class LearningFailedError extends Error {
-  constructor(
-    message: string,
-    readonly attempts: number,
-  ) {
-    super(message);
-  }
-}
-
-/* ------------------------------------------------------------- the backend */
-
-type Turn = { role: "user" | "assistant"; text: string };
-
-interface Provider {
-  /** Recorded against the profile, so you can see what wrote a given parser. */
-  label: string;
-  /** Ask for JSON matching `SPEC_SCHEMA`. Returns the raw JSON text. */
-  complete(system: string, turns: Turn[]): Promise<string>;
-}
-
-/**
- * Which backend to learn with:
- *   LEARNING_BASE_URL  an OpenAI-compatible endpoint, e.g. http://localhost:11434/v1
- *                      (with LEARNING_MODEL naming the model). Wins when set.
- *   ANTHROPIC_API_KEY  the Anthropic API, on LEARNING_MODEL or claude-opus-5.
- */
-function resolveProvider(): Provider | null {
-  const baseUrl = process.env.LEARNING_BASE_URL?.replace(/\/$/, "");
-  if (baseUrl) {
-    const model = process.env.LEARNING_MODEL;
-    if (!model) {
-      throw new LearningUnavailableError(
-        "LEARNING_BASE_URL is set but LEARNING_MODEL isn't — name the model to use.",
-      );
-    }
-    return openAiCompatibleProvider(baseUrl, model, process.env.LEARNING_API_KEY);
-  }
-  if (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN) {
-    return anthropicProvider(process.env.LEARNING_MODEL || DEFAULT_ANTHROPIC_MODEL);
-  }
-  return null;
-}
-
-export function isLearningConfigured(): boolean {
-  try {
-    return resolveProvider() !== null;
-  } catch {
-    return false; // misconfigured counts as unavailable; the error explains why
-  }
-}
-
-/** Where learning would run, for display. `null` when it can't. */
-export function learningBackendLabel(): string | null {
-  try {
-    return resolveProvider()?.label ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function anthropicProvider(model: string): Provider {
-  return {
-    label: model,
-    async complete(system, turns) {
-      const client = new Anthropic();
-      const message = await client.messages.create({
-        model,
-        max_tokens: 16000,
-        system,
-        output_config: { format: { type: "json_schema", schema: SPEC_SCHEMA } },
-        messages: turns.map((t) => ({ role: t.role, content: t.text })),
-      });
-      return message.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("");
-    },
-  };
-}
-
-/**
- * Read an OpenAI-style SSE stream down to its concatenated content.
- *
- * We stream even though we only want the final JSON: a local model can think for
- * minutes before its first token, and an unstreamed response sends no headers until
- * it finishes — which trips Node's 300s headers timeout regardless of our own.
- */
-async function readStream(body: ReadableStream<Uint8Array>): Promise<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffered = "";
-  let content = "";
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffered += decoder.decode(value, { stream: true });
-
-    const lines = buffered.split("\n");
-    buffered = lines.pop() ?? ""; // keep the partial line for the next chunk
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      try {
-        const chunk = JSON.parse(payload) as {
-          choices?: { delta?: { content?: string } }[];
-        };
-        content += chunk.choices?.[0]?.delta?.content ?? "";
-      } catch {
-        // A keepalive or a comment frame; nothing to add.
-      }
-    }
-  }
-  return content;
-}
-
-function timeoutMs(): number {
-  const raw = Number(process.env.LEARNING_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
-}
-
-/**
- * Any server speaking OpenAI's /chat/completions with `response_format:
- * json_schema` — which is how Ollama, LM Studio, llama.cpp and vLLM all expose
- * grammar-constrained decoding.
- */
-function openAiCompatibleProvider(baseUrl: string, model: string, apiKey?: string): Provider {
-  const reasoningEffort = process.env.LEARNING_REASONING_EFFORT;
-  return {
-    label: `${model} (${new URL(baseUrl).host})`,
-    async complete(system, turns) {
-      const res = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Local servers ignore this; hosted ones need it.
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: system },
-            ...turns.map((t) => ({ role: t.role, content: t.text })),
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: { name: "broker_parse_spec", strict: true, schema: SPEC_SCHEMA },
-          },
-          temperature: 0,
-          stream: true,
-          // Thinking generally earns its keep here — inferring a regex from a table
-          // is exactly the kind of task it helps with — so it's left on unless asked
-          // otherwise. Set LEARNING_REASONING_EFFORT=none to trade quality for speed
-          // on a local reasoning model.
-          ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-        }),
-        signal: AbortSignal.timeout(timeoutMs()),
-      });
-
-      if (!res.ok) {
-        throw new Error(`${model} at ${baseUrl} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
-      }
-      if (!res.body) throw new Error(`${model} at ${baseUrl} returned an empty response.`);
-
-      const content = await readStream(res.body);
-      // Reasoning models sometimes leak a think block into the content despite the
-      // schema; the JSON is what follows it.
-      return content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    },
-  };
-}
+/** Generous: a spec is one flat JSON object, but a big statement makes a long one. */
+const MAX_TOKENS = 16000;
 
 /* ------------------------------------------------------------ output shape */
 
@@ -489,20 +309,6 @@ function buildRepairRequest(
   return parts.join("\n\n");
 }
 
-function parseAnswer(text: string): SpecDraft {
-  if (!text.trim()) throw new Error("The model returned no spec.");
-  try {
-    return JSON.parse(text) as SpecDraft;
-  } catch {
-    // A schema-constrained answer should be bare JSON, but small models sometimes
-    // wrap it in prose or a fence. Take the outermost object and try again.
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start === -1 || end <= start) throw new Error("The model's answer wasn't JSON.");
-    return JSON.parse(text.slice(start, end + 1)) as SpecDraft;
-  }
-}
-
 export interface LearnedParser {
   spec: BrokerParseSpec;
   model: string;
@@ -524,11 +330,13 @@ export interface LearnOptions {
     spec: BrokerParseSpec | null;
     errors: string[];
   }) => void;
+  /** Overridable so a check script can drive the loop offline. */
+  provider?: AiProvider;
 }
 
 /**
  * Ask the configured model for a parser for `text`, validate it locally, and hand
- * back the first spec that passes. Throws `LearningFailedError` if none does —
+ * back the first spec that passes. Throws `StructuredTaskError` if none does —
  * better to refuse the import than to write half-read trades into the ledger.
  *
  * A sample of the statement goes to whichever backend is configured, and nothing
@@ -538,51 +346,52 @@ export async function learnParser(
   text: string,
   options: LearnOptions = {},
 ): Promise<LearnedParser> {
-  const provider = resolveProvider();
-  if (!provider) {
-    throw new LearningUnavailableError(
-      "Nothing is configured to learn a parser with. Set ANTHROPIC_API_KEY, or point LEARNING_BASE_URL and LEARNING_MODEL at a local model.",
-    );
-  }
+  // The reviewer knows the spec it just rejected; `onRejected` is handed it so the
+  // harness can print the pattern that failed rather than only the complaint.
+  let lastSpec: BrokerParseSpec | null = null;
 
-  const turns: Turn[] = [{ role: "user", text: buildRequest(sampleForLearning(text)) }];
-  let lastFailure = "the model did not return a usable spec";
+  const outcome = await runStructuredTask<LearnedParser>({
+    system: SYSTEM_PROMPT,
+    request: buildRequest(sampleForLearning(text)),
+    schema: SPEC_SCHEMA,
+    schemaName: "broker_parse_spec",
+    maxTokens: MAX_TOKENS,
+    maxAttempts: MAX_ATTEMPTS,
+    provider: options.provider,
+    review: (draft): Review<LearnedParser> => {
+      lastSpec = null;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const answer = await provider.complete(SYSTEM_PROMPT, turns);
+      let spec: BrokerParseSpec;
+      try {
+        spec = specFromDraft(draft as SpecDraft);
+      } catch (e) {
+        return {
+          ok: false,
+          errors: [(e as Error).message],
+          repair: `That spec was rejected before it could run: ${(e as Error).message}\n\nReturn a corrected spec.`,
+        };
+      }
+      lastSpec = spec;
 
-    let spec: BrokerParseSpec;
-    try {
-      spec = specFromDraft(parseAnswer(answer));
-    } catch (e) {
-      lastFailure = (e as Error).message;
-      options.onRejected?.({ attempt, answer, spec: null, errors: [lastFailure] });
-      turns.push(
-        { role: "assistant", text: answer },
-        {
-          role: "user",
-          text: `That spec was rejected before it could run: ${lastFailure}\n\nReturn a corrected spec.`,
-        },
-      );
-      continue;
-    }
+      // The real test: run it over the whole document, not the sample the model saw.
+      const result = runSpec(text, spec);
+      const validation = validateRun(result, spec);
+      if (validation.ok) {
+        return {
+          ok: true,
+          // `model` and `attempts` are filled in from the outcome below.
+          value: { spec, model: "", attempts: 0, result, validation },
+        };
+      }
+      return {
+        ok: false,
+        errors: validation.errors,
+        repair: buildRepairRequest(validation, result, spec),
+      };
+    },
+    onRejected: ({ attempt, answer, errors }) =>
+      options.onRejected?.({ attempt, answer, spec: lastSpec, errors }),
+  });
 
-    const result = runSpec(text, spec);
-    const validation = validateRun(result, spec);
-    if (validation.ok) {
-      return { spec, model: provider.label, attempts: attempt, result, validation };
-    }
-
-    lastFailure = validation.errors.join(" ");
-    options.onRejected?.({ attempt, answer, spec, errors: validation.errors });
-    turns.push(
-      { role: "assistant", text: answer },
-      { role: "user", text: buildRepairRequest(validation, result, spec) },
-    );
-  }
-
-  throw new LearningFailedError(
-    `Couldn't work out this statement's layout after ${MAX_ATTEMPTS} attempts. Last problem: ${lastFailure}`,
-    MAX_ATTEMPTS,
-  );
+  return { ...outcome.value, model: outcome.model, attempts: outcome.attempts };
 }

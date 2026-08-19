@@ -1,5 +1,12 @@
+/**
+ * The PSX market-watch scrape.
+ *
+ * Only the fetch-and-parse remains: this module used to own a `PriceCache`
+ * table of its own, which was the last PSX-only pricing path in the app. Prices
+ * for every market — PSX included — now land in `Quote` via the market pipeline,
+ * and `markets/providers/psx.ts` is the one caller of what is left here.
+ */
 import * as cheerio from "cheerio";
-import { prisma } from "./db";
 
 const MARKET_WATCH_URL = "https://dps.psx.com.pk/market-watch";
 
@@ -82,73 +89,4 @@ export async function fetchMarketWatch(timeoutMs = 15000): Promise<LivePrice[]> 
   });
 
   return out;
-}
-
-/**
- * Refresh cached prices. Fetches the whole market and stores only the given
- * symbols (defaults to symbols we currently hold). Returns count updated.
- * Never throws for the caller's convenience is NOT assumed — callers should catch.
- */
-export async function refreshPrices(symbols?: string[]): Promise<{ updated: number; fetchedAt: Date }> {
-  const all = await fetchMarketWatch();
-  const wanted = symbols ? new Set(symbols) : null;
-  const rows = wanted ? all.filter((p) => wanted.has(p.symbol)) : all;
-  const fetchedAt = new Date();
-
-  await prisma.$transaction(
-    rows.map((p) =>
-      prisma.priceCache.upsert({
-        where: { symbol: p.symbol },
-        create: {
-          symbol: p.symbol,
-          lastPrice: p.price,
-          change: p.change,
-          changePct: p.changePct,
-          fetchedAt,
-        },
-        update: {
-          lastPrice: p.price,
-          change: p.change,
-          changePct: p.changePct,
-          fetchedAt,
-        },
-      }),
-    ),
-  );
-
-  return { updated: rows.length, fetchedAt };
-}
-
-/**
- * Best-effort refresh: fetch fresh prices only if the cache is missing symbols
- * or the newest cached price is older than maxAgeMs. Swallows network errors so
- * the dashboard still renders (holdings-only) when the feed is unreachable.
- */
-export async function refreshPricesIfStale(symbols: string[], maxAgeMs = 120_000): Promise<void> {
-  if (symbols.length === 0) return;
-  const [newest, haveCount] = await Promise.all([
-    prisma.priceCache.findFirst({
-      where: { symbol: { in: symbols } },
-      orderBy: { fetchedAt: "desc" },
-      select: { fetchedAt: true },
-    }),
-    prisma.priceCache.count({ where: { symbol: { in: symbols } } }),
-  ]);
-  const fresh = newest && Date.now() - newest.fetchedAt.getTime() < maxAgeMs;
-  if (fresh && haveCount >= symbols.length) return;
-  try {
-    await refreshPrices(symbols);
-  } catch {
-    // offline / feed down — leave whatever is cached, dashboard degrades gracefully
-  }
-}
-
-/** Read cached prices for the given symbols as a lookup map. */
-export async function getCachedPrices(symbols: string[]): Promise<Map<string, { price: number; change: number | null; changePct: number | null; fetchedAt: Date }>> {
-  const rows = await prisma.priceCache.findMany({ where: { symbol: { in: symbols } } });
-  const map = new Map<string, { price: number; change: number | null; changePct: number | null; fetchedAt: Date }>();
-  for (const r of rows) {
-    map.set(r.symbol, { price: r.lastPrice, change: r.change, changePct: r.changePct, fetchedAt: r.fetchedAt });
-  }
-  return map;
 }
